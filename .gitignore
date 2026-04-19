@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Node
+node_modules/
+
+# Local runtime artifacts
+data/db/*.sqlite
+data/db/*.sqlite-*
+data/outputs/**
+
+# Env
+.env

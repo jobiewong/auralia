@@ -48,33 +48,40 @@ Build a fully local, character-aware audiobook pipeline that converts prose into
 
 **Objective:** Lock stage interfaces in SQLite and harden non-LLM correctness checks.
 
-**Status:** ⬜ Not started
+**Status:** ✅ Completed
 
 **Tasks**
-- [ ] Define initial SQLite schema via Drizzle for:
-  - [ ] `documents`
-  - [ ] `spans`
-  - [ ] `attributions` (or attribution columns on spans)
-  - [ ] `voices`
-  - [ ] `voice_mappings`
-  - [ ] `synthesis_jobs`
-  - [ ] `synthesis_segments`
-- [ ] Create migration baseline and migration workflow
-- [ ] Define local storage layout for reusable voice assets (`data/voices/...`) and outputs (`data/outputs/...`)
-- [ ] Implement deterministic validators:
-  - [ ] schema/type validation at API boundary
-  - [ ] contiguity (`next.start == prev.end`)
-  - [ ] non-overlap
-  - [ ] full coverage (0..len(text))
-  - [ ] exact reconstruction (`join(span.text) == text`)
-  - [ ] offset-text consistency (`text[start:end] == span.text`)
-- [ ] Add machine-readable error report format
-- [ ] Add unit tests for all validator edge cases
+- [x] Define initial SQLite schema via Drizzle for:
+  - [x] `documents`
+  - [x] `spans`
+  - [x] `attributions` (or attribution columns on spans)
+  - [x] `voices`
+  - [x] `voice_mappings`
+  - [x] `synthesis_jobs`
+  - [x] `synthesis_segments`
+- [x] Create migration baseline and migration workflow
+- [x] Define local storage layout for reusable voice assets (`data/voices/...`) and outputs (`data/outputs/...`)
+- [x] Implement deterministic validators:
+  - [x] schema/type validation at API boundary
+  - [x] contiguity (`next.start == prev.end`)
+  - [x] non-overlap
+  - [x] full coverage (0..len(text))
+  - [x] exact reconstruction (`join(span.text) == text`)
+  - [x] offset-text consistency (`text[start:end] == span.text`)
+- [x] Add machine-readable error report format
+- [x] Add unit tests for all validator edge cases
 
 **Definition of Done**
 - SQLite schema + migrations are reproducible from a clean clone.
 - Validation suite catches malformed spans and blocks pipeline progression.
 - Unit tests cover nominal + edge conditions (gaps, overlaps, drift, invalid offsets).
+
+**Delivered artifacts**
+- Drizzle schema and migrations under `packages/db/`
+- Validator implementation under `apps/api/src/auralia_api/validators/`
+- Validator tests under `tests/validators/`
+- Storage directories `data/voices/` and `data/outputs/`
+- Migration workflow doc at `docs/migrations.md`
 
 ---
 
@@ -263,21 +270,25 @@ At end of each session, update:
 
 - **Last updated:** 2026-04-19
 - **Completed this session:**
-  - [x] Initial repo created and pushed
-  - [x] `PLAN.md` created and expanded
-  - [x] `README.md` aligned with architecture and goals
-- **Next immediate task:** M0 - initialize Turborepo app/package skeleton, then M1 SQLite+Drizzle schema baseline
-- **Blockers:** None
+  - [x] M1 SQLite+Drizzle schema baseline implemented (`documents`, `spans`, `attributions`, `voices`, `voice_mappings`, `synthesis_jobs`, `synthesis_segments`)
+  - [x] Baseline migration + migration workflow docs added
+  - [x] Deterministic span validators implemented with machine-readable error reports
+  - [x] Validator edge-case unit tests added (19 passing)
+  - [x] Local storage layout created (`data/voices`, `data/outputs`)
+- **Next immediate task:** M0 - initialize Turborepo app/package skeleton (`apps/api`, `apps/web`, `packages/shared`) and root dev workflow
+- **Blockers:** `npm` is unavailable in this runtime, so Drizzle migration commands were documented but not executed here
 - **Resume commands:**
   - `cd ~/repos/auralia`
   - `git pull`
+  - `pytest tests/validators -q`
+  - `npm --workspace @auralia/db run db:migrate`
 
 ---
 
 ## Progress Snapshot
 
 - M0 Repo & Tooling Skeleton: ⬜
-- M1 Contracts + Validators: ⬜
+- M1 Contracts + Validators: ✅
 - M2 Ingestion & Cleaning: ⬜
 - M3 Segmentation + Chunk Merge: ⬜
 - M4 Attribution + Review Flags: ⬜

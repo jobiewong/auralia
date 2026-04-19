@@ -1,0 +1,17 @@
+{
+  "name": "auralia",
+  "private": true,
+  "version": "0.0.1",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "echo \"Wire turbo dev after app scaffolds are added\"",
+    "test": "pytest -q",
+    "lint": "echo \"TODO: add linting\"",
+    "typecheck": "echo \"TODO: add typecheck\"",
+    "db:generate": "npm --workspace @auralia/db run db:generate",
+    "db:migrate": "npm --workspace @auralia/db run db:migrate"
+  }
+}
