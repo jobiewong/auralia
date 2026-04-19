@@ -100,8 +100,8 @@ Build a fully local, character-aware audiobook pipeline that converts prose into
 **Status:** 🟨 In progress
 
 **Tasks**
-- [ ] Implement plain-text ingestion endpoint accepting raw text (markdown or plain) in the request body; both formats flow through the same cleaning pipeline before storage (replaces the prior local-text-file ingestion approach)
-- [ ] Implement AO3 ingestion adapter (with rate-limit + compliance guardrails)
+- [x] Implement plain-text ingestion endpoint accepting raw text (markdown or plain) in the request body; both formats flow through the same cleaning pipeline before storage (replaces the prior local-text-file ingestion approach)
+- [x] Implement AO3 ingestion adapter (with rate-limit + compliance guardrails)
 - [x] HTML/tag stripping + whitespace normalization
 - [x] Store cleaned text + metadata in `documents` table
 - [x] Add ingestion endpoint + job record creation
@@ -111,15 +111,26 @@ Build a fully local, character-aware audiobook pipeline that converts prose into
 - Inputs from AO3/text become valid `cleaned_document` JSON.
 
 **Delivered so far**
-- New ingestion module under `apps/api/src/auralia_api/ingestion/`:
-  - `cleaning.py` (HTML/entity cleanup + whitespace normalization)
-  - `schemas.py` (request/response contracts)
-  - `service.py` (local file ingestion orchestration)
+- Ingestion module under `apps/api/src/auralia_api/ingestion/`:
+  - `cleaning.py` (HTML/entity cleanup + markdown/plain-text normalization)
+  - `ao3.py` (AO3 chapter fetch + parse with conservative request behavior)
+  - `schemas.py` (request/response contracts for text + AO3 ingestion)
+  - `service.py` (ingestion orchestration + persistence)
   - `storage.py` (SQLite inserts; introduces `ingestion_jobs` table if missing)
-- New API endpoint: `POST /api/ingest/text-file`
-- New tests under `tests/ingestion/`:
+- API endpoints:
+  - `POST /api/ingest/text`
+  - `POST /api/ingest/ao3`
+- Tests under `tests/ingestion/`:
   - `test_cleaning.py`
-  - `test_text_file_ingestion_api.py`
+  - `test_text_ingestion_api.py`
+  - `test_ao3_adapter.py`
+  - `test_ao3_ingestion_api.py`
+
+**AO3 guardrails implemented**
+- Restricts ingestion to `https://archiveofourown.org/works/<id>/chapters/<id>` URLs
+- Enforces minimum interval between outbound AO3 requests in-process
+- Uses single request per ingestion call (no crawling), bounded response size, and strict chapter-body extraction
+- Returns explicit validation/fetch/parse errors with safe API mappings
 
 ---
 
@@ -289,17 +300,14 @@ At end of each session, update:
 
 - **Last updated:** 2026-04-19
 - **Completed in this session:**
-  - [x] Pulled latest repo updates from origin/main
-  - [x] Re-validated plan state: M0 ✅, M1 ✅, M2 now active
-  - [x] M2 partial delivery: local text-file ingestion flow (`POST /api/ingest/text-file`)
-  - [x] Implemented cleaning pipeline (tag stripping, entity handling, whitespace normalization)
-  - [x] Persisted cleaned documents to `documents` and ingestion jobs to `ingestion_jobs`
-  - [x] Added ingestion tests for malformed HTML/whitespace and endpoint persistence/error behavior
-- **Still open in M2:**
-  - [ ] Replace local-text-file ingestion with a plain-text request-body endpoint (markdown or plain text, unified cleaning)
-  - [ ] AO3 ingestion adapter (with rate-limit + compliance guardrails)
-- **Next immediate task:** implement the plain-text request-body ingestion endpoint (supersedes `/api/ingest/text-file`) with unified markdown/plain-text cleaning
-- **Blockers:** Runtime here still lacks npm; Python tests run and pass (`pytest tests/ -q`).
+  - [x] Pulled latest repo updates from origin/main and aligned plan text to current ingestion architecture
+  - [x] Completed M2 plain-text request-body ingestion endpoint (`POST /api/ingest/text`)
+  - [x] Completed M2 AO3 ingestion adapter with conservative request guardrails (`POST /api/ingest/ao3`)
+  - [x] Added AO3 adapter/unit tests and AO3 endpoint integration tests
+  - [x] Verified ingestion coverage + full Python suite (`pytest tests/ingestion -q`, `pytest tests/ -q`)
+- **M2 status:** ✅ complete for current milestone definition (text + AO3 ingestion, cleaning, persistence, endpoints, tests)
+- **Next immediate task:** begin M3 segmentation pass scaffolding (chunking + prompt call + response validation loop)
+- **Blockers:** Runtime here still lacks npm; Python tests pass in this environment.
 - **Resume commands:**
   - `cd ~/repos/auralia`
   - `git pull`
@@ -313,7 +321,7 @@ At end of each session, update:
 
 - M0 Repo & Tooling Skeleton: ✅
 - M1 Contracts + Validators: ✅
-- M2 Ingestion & Cleaning: ⬜
+- M2 Ingestion & Cleaning: ✅
 - M3 Segmentation + Chunk Merge: ⬜
 - M4 Attribution + Review Flags: ⬜
 - M5 Voice Registry API + Voice Management: ⬜

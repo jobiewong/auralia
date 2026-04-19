@@ -10,6 +10,13 @@ class IngestTextRequest(BaseModel):
     title: str | None = Field(default=None)
 
 
+class IngestAo3Request(BaseModel):
+    url: str = Field(..., min_length=1)
+    source_id: str | None = Field(default=None)
+    chapter_id: str | None = Field(default=None)
+    title: str | None = Field(default=None)
+
+
 class IngestionJobOut(BaseModel):
     id: str
     status: str
