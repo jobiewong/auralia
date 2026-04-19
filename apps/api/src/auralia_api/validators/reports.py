@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import UTC, datetime
-from typing import Iterable
 
 from .spans import ValidationError
 
 
-def build_validation_report(*, stage: str, text_length: int, errors: Iterable[ValidationError]) -> dict:
+def build_validation_report(
+    *, stage: str, text_length: int, errors: Iterable[ValidationError]
+) -> dict:
     error_list = [e.to_dict() for e in errors]
 
     return {

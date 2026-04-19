@@ -45,7 +45,15 @@ def insert_document(*, sqlite_path: str, document: dict) -> None:
     with _connect(sqlite_path) as conn:
         conn.execute(
             """
-            INSERT INTO documents (id, source_id, chapter_id, title, text, text_length, normalization)
+            INSERT INTO documents (
+                id,
+                source_id,
+                chapter_id,
+                title,
+                text,
+                text_length,
+                normalization
+            )
             VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
             (
@@ -64,7 +72,14 @@ def insert_ingestion_job(*, sqlite_path: str, job: dict) -> None:
     with _connect(sqlite_path) as conn:
         conn.execute(
             """
-            INSERT INTO ingestion_jobs (id, source_type, source_ref, status, document_id, error_message)
+            INSERT INTO ingestion_jobs (
+                id,
+                source_type,
+                source_ref,
+                status,
+                document_id,
+                error_message
+            )
             VALUES (?, ?, ?, ?, ?, ?)
             """,
             (

@@ -7,7 +7,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """Runtime configuration loaded from environment and optional `.env` at repo root."""
+    """Runtime configuration loaded from environment.
+
+    Optionally reads `.env` at repository root.
+    """
 
     model_config = SettingsConfigDict(
         env_prefix="AURALIA_",

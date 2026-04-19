@@ -10,14 +10,26 @@ from auralia_api.validators.spans import (
 
 
 def sample_text() -> str:
-    return "Hello world.\n\"Hi, Ron,\" said Hermione."
+    return 'Hello world.\n"Hi, Ron," said Hermione.'
 
 
 def valid_spans():
     text = sample_text()
     return [
-        {"id": "s_000001", "type": "narration", "text": text[:13], "start": 0, "end": 13},
-        {"id": "s_000002", "type": "dialogue", "text": text[13:], "start": 13, "end": len(text)},
+        {
+            "id": "s_000001",
+            "type": "narration",
+            "text": text[:13],
+            "start": 0,
+            "end": 13,
+        },
+        {
+            "id": "s_000002",
+            "type": "dialogue",
+            "text": text[13:],
+            "start": 13,
+            "end": len(text),
+        },
     ]
 
 

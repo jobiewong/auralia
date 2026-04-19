@@ -53,7 +53,9 @@ def test_schema_validation_rejects_boolean_offsets():
         "source_id": "ao3:work:123456",
         "chapter_id": "ch_01",
         "text": "abc",
-        "spans": [{"id": "s_1", "type": "dialogue", "text": "a", "start": True, "end": 1}],
+        "spans": [
+            {"id": "s_1", "type": "dialogue", "text": "a", "start": True, "end": 1}
+        ],
     }
 
     errors = validate_spans_payload_schema(payload)

@@ -10,7 +10,7 @@ def test_clean_prose_text_strips_malformed_html_and_entities():
 
 
 def test_clean_prose_text_normalizes_odd_whitespace():
-    raw = "\tHello\u00A0\u00A0  world\r\n\r\n\r\n  Next\tline  "
+    raw = "\tHello\u00a0\u00a0  world\r\n\r\n\r\n  Next\tline  "
 
     cleaned = clean_prose_text(raw)
 

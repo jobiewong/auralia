@@ -13,7 +13,9 @@ def test_build_validation_report_shape_and_status():
         )
     ]
 
-    report = build_validation_report(stage="segmentation", text_length=42, errors=errors)
+    report = build_validation_report(
+        stage="segmentation", text_length=42, errors=errors
+    )
 
     assert report["ok"] is False
     assert report["stage"] == "segmentation"

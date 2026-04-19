@@ -12,9 +12,13 @@ def _client_with_db(monkeypatch, db_path: Path) -> TestClient:
     return TestClient(app)
 
 
-def test_ingest_text_file_endpoint_persists_cleaned_document_and_job(monkeypatch, tmp_path):
+def test_ingest_text_file_endpoint_persists_cleaned_document_and_job(
+    monkeypatch, tmp_path
+):
     source_file = tmp_path / "chapter01.txt"
-    source_file.write_text("<h1>Ch 1</h1>\n\nHarry\t  said: &quot;Hi&quot;", encoding="utf-8")
+    source_file.write_text(
+        "<h1>Ch 1</h1>\n\nHarry\t  said: &quot;Hi&quot;", encoding="utf-8"
+    )
 
     db_path = tmp_path / "auralia.sqlite"
     client = _client_with_db(monkeypatch, db_path)
@@ -35,8 +39,10 @@ def test_ingest_text_file_endpoint_persists_cleaned_document_and_job(monkeypatch
     assert payload["cleaned_document"]["source_id"] == "local:test"
     assert payload["cleaned_document"]["chapter_id"] == "ch_01"
     assert payload["cleaned_document"]["title"] == "Chapter 1"
-    assert payload["cleaned_document"]["text"] == "Ch 1\n\nHarry said: \"Hi\""
-    assert payload["cleaned_document"]["text_length"] == len(payload["cleaned_document"]["text"])
+    assert payload["cleaned_document"]["text"] == 'Ch 1\n\nHarry said: "Hi"'
+    assert payload["cleaned_document"]["text_length"] == len(
+        payload["cleaned_document"]["text"]
+    )
 
 
 def test_ingest_text_file_endpoint_returns_404_for_missing_file(monkeypatch, tmp_path):

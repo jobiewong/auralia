@@ -65,7 +65,7 @@ def clean_prose_text(raw_text: str) -> str:
     text = re.sub(r"<[A-Za-z][A-Za-z0-9_-]*", "", text)
 
     text = text.replace("\r\n", "\n").replace("\r", "\n")
-    text = text.replace("\u00A0", " ").replace("\t", " ")
+    text = text.replace("\u00a0", " ").replace("\t", " ")
 
     # Collapse runs of spaces while preserving line boundaries.
     text = re.sub(r"[ ]+", " ", text)

@@ -16,8 +16,17 @@ class ValidationError:
         return asdict(self)
 
 
-def _error(code: str, message: str, *, span_id: str | None = None, index: int | None = None, details: dict[str, Any] | None = None) -> ValidationError:
-    return ValidationError(code=code, message=message, span_id=span_id, index=index, details=details)
+def _error(
+    code: str,
+    message: str,
+    *,
+    span_id: str | None = None,
+    index: int | None = None,
+    details: dict[str, Any] | None = None,
+) -> ValidationError:
+    return ValidationError(
+        code=code, message=message, span_id=span_id, index=index, details=details
+    )
 
 
 def _required_top_level_fields() -> dict[str, type]:
@@ -34,7 +43,13 @@ def validate_spans_payload_schema(payload: dict[str, Any]) -> list[ValidationErr
 
     for field, expected_type in _required_top_level_fields().items():
         if field not in payload:
-            errors.append(_error("SCHEMA_MISSING_FIELD", f"Missing required field: {field}", details={"field": field}))
+            errors.append(
+                _error(
+                    "SCHEMA_MISSING_FIELD",
+                    f"Missing required field: {field}",
+                    details={"field": field},
+                )
+            )
             continue
 
         if not isinstance(payload[field], expected_type):
@@ -52,12 +67,21 @@ def validate_spans_payload_schema(payload: dict[str, Any]) -> list[ValidationErr
 
     for i, span in enumerate(spans):
         if not isinstance(span, dict):
-            errors.append(_error("SCHEMA_INVALID_TYPE", "Each span must be an object", index=i))
+            errors.append(
+                _error("SCHEMA_INVALID_TYPE", "Each span must be an object", index=i)
+            )
             continue
 
         for f in ("id", "type", "text", "start", "end"):
             if f not in span:
-                errors.append(_error("SCHEMA_MISSING_FIELD", f"Span missing required field: {f}", index=i, details={"field": f}))
+                errors.append(
+                    _error(
+                        "SCHEMA_MISSING_FIELD",
+                        f"Span missing required field: {f}",
+                        index=i,
+                        details={"field": f},
+                    )
+                )
 
         span_type = span.get("type")
         if span_type is not None and span_type not in {"narration", "dialogue"}:
@@ -71,19 +95,46 @@ def validate_spans_payload_schema(payload: dict[str, Any]) -> list[ValidationErr
                 )
             )
 
-        if "start" in span and (not isinstance(span["start"], int) or isinstance(span["start"], bool)):
-            errors.append(_error("SCHEMA_INVALID_TYPE", "Span field 'start' must be integer", span_id=span.get("id"), index=i))
+        if "start" in span and (
+            not isinstance(span["start"], int) or isinstance(span["start"], bool)
+        ):
+            errors.append(
+                _error(
+                    "SCHEMA_INVALID_TYPE",
+                    "Span field 'start' must be integer",
+                    span_id=span.get("id"),
+                    index=i,
+                )
+            )
 
-        if "end" in span and (not isinstance(span["end"], int) or isinstance(span["end"], bool)):
-            errors.append(_error("SCHEMA_INVALID_TYPE", "Span field 'end' must be integer", span_id=span.get("id"), index=i))
+        if "end" in span and (
+            not isinstance(span["end"], int) or isinstance(span["end"], bool)
+        ):
+            errors.append(
+                _error(
+                    "SCHEMA_INVALID_TYPE",
+                    "Span field 'end' must be integer",
+                    span_id=span.get("id"),
+                    index=i,
+                )
+            )
 
         if "text" in span and not isinstance(span["text"], str):
-            errors.append(_error("SCHEMA_INVALID_TYPE", "Span field 'text' must be string", span_id=span.get("id"), index=i))
+            errors.append(
+                _error(
+                    "SCHEMA_INVALID_TYPE",
+                    "Span field 'text' must be string",
+                    span_id=span.get("id"),
+                    index=i,
+                )
+            )
 
     return errors
 
 
-def validate_span_boundaries(spans: list[dict[str, Any]], text: str) -> list[ValidationError]:
+def validate_span_boundaries(
+    spans: list[dict[str, Any]], text: str
+) -> list[ValidationError]:
     errors: list[ValidationError] = []
     text_length = len(text)
 
@@ -141,10 +192,14 @@ def validate_span_non_overlap(spans: list[dict[str, Any]]) -> list[ValidationErr
     return errors
 
 
-def validate_span_coverage(spans: list[dict[str, Any]], text: str) -> list[ValidationError]:
+def validate_span_coverage(
+    spans: list[dict[str, Any]], text: str
+) -> list[ValidationError]:
     errors: list[ValidationError] = []
     if not spans:
-        errors.append(_error("COVERAGE_EMPTY", "At least one span is required for non-empty text"))
+        errors.append(
+            _error("COVERAGE_EMPTY", "At least one span is required for non-empty text")
+        )
         return errors
 
     if spans[0]["start"] != 0:
@@ -173,7 +228,9 @@ def validate_span_coverage(spans: list[dict[str, Any]], text: str) -> list[Valid
     return errors
 
 
-def validate_reconstruction(spans: list[dict[str, Any]], text: str) -> list[ValidationError]:
+def validate_reconstruction(
+    spans: list[dict[str, Any]], text: str
+) -> list[ValidationError]:
     joined = "".join(span["text"] for span in spans)
     if joined == text:
         return []
@@ -187,7 +244,9 @@ def validate_reconstruction(spans: list[dict[str, Any]], text: str) -> list[Vali
     ]
 
 
-def validate_offset_text_consistency(spans: list[dict[str, Any]], text: str) -> list[ValidationError]:
+def validate_offset_text_consistency(
+    spans: list[dict[str, Any]], text: str
+) -> list[ValidationError]:
     errors: list[ValidationError] = []
     for i, span in enumerate(spans):
         slice_text = text[span["start"] : span["end"]]

@@ -1,6 +1,7 @@
 from .reports import build_validation_report
 from .spans import (
     ValidationError,
+    run_all_span_validators,
     validate_offset_text_consistency,
     validate_reconstruction,
     validate_span_boundaries,
@@ -8,7 +9,6 @@ from .spans import (
     validate_span_coverage,
     validate_span_non_overlap,
     validate_spans_payload_schema,
-    run_all_span_validators,
 )
 
 __all__ = [
