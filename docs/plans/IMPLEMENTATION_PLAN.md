@@ -100,7 +100,7 @@ Build a fully local, character-aware audiobook pipeline that converts prose into
 **Status:** 🟨 In progress
 
 **Tasks**
-- [x] Implement local text file ingestion
+- [ ] Implement plain-text ingestion endpoint accepting raw text (markdown or plain) in the request body; both formats flow through the same cleaning pipeline before storage (replaces the prior local-text-file ingestion approach)
 - [ ] Implement AO3 ingestion adapter (with rate-limit + compliance guardrails)
 - [x] HTML/tag stripping + whitespace normalization
 - [x] Store cleaned text + metadata in `documents` table
@@ -296,8 +296,9 @@ At end of each session, update:
   - [x] Persisted cleaned documents to `documents` and ingestion jobs to `ingestion_jobs`
   - [x] Added ingestion tests for malformed HTML/whitespace and endpoint persistence/error behavior
 - **Still open in M2:**
+  - [ ] Replace local-text-file ingestion with a plain-text request-body endpoint (markdown or plain text, unified cleaning)
   - [ ] AO3 ingestion adapter (with rate-limit + compliance guardrails)
-- **Next immediate task:** finish AO3 ingestion adapter + tests, then mark M2 ✅
+- **Next immediate task:** implement the plain-text request-body ingestion endpoint (supersedes `/api/ingest/text-file`) with unified markdown/plain-text cleaning
 - **Blockers:** Runtime here still lacks npm; Python tests run and pass (`pytest tests/ -q`).
 - **Resume commands:**
   - `cd ~/repos/auralia`

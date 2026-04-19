@@ -3,9 +3,9 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 
-class IngestTextFileRequest(BaseModel):
-    file_path: str = Field(..., min_length=1)
-    source_id: str = Field(default="local:file")
+class IngestTextRequest(BaseModel):
+    text: str = Field(..., min_length=1)
+    source_id: str = Field(default="inline:text")
     chapter_id: str = Field(default="ch_01")
     title: str | None = Field(default=None)
 
@@ -25,6 +25,6 @@ class CleanedDocumentOut(BaseModel):
     normalization: dict[str, bool]
 
 
-class IngestTextFileResponse(BaseModel):
+class IngestTextResponse(BaseModel):
     ingestion_job: IngestionJobOut
     cleaned_document: CleanedDocumentOut

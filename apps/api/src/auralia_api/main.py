@@ -4,8 +4,8 @@ from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 
 from auralia_api.config import get_settings
-from auralia_api.ingestion.schemas import IngestTextFileRequest, IngestTextFileResponse
-from auralia_api.ingestion.service import ingest_local_text_file
+from auralia_api.ingestion.schemas import IngestTextRequest, IngestTextResponse
+from auralia_api.ingestion.service import ingest_text
 
 app = FastAPI(title="Auralia API", version="0.1.0")
 
@@ -36,17 +36,18 @@ def api_info() -> dict[str, str | int]:
 
 
 @app.post(
-    "/api/ingest/text-file",
-    response_model=IngestTextFileResponse,
+    "/api/ingest/text",
+    response_model=IngestTextResponse,
     status_code=status.HTTP_201_CREATED,
 )
-def ingest_text_file(req: IngestTextFileRequest) -> IngestTextFileResponse:
+def ingest_text_endpoint(req: IngestTextRequest) -> IngestTextResponse:
     settings = get_settings()
     try:
-        result = ingest_local_text_file(req=req, sqlite_path=settings.sqlite_path)
-    except FileNotFoundError as exc:
+        result = ingest_text(req=req, sqlite_path=settings.sqlite_path)
+    except ValueError as exc:
         raise HTTPException(
-            status_code=404, detail="Input text file not found"
+            status_code=422,
+            detail="Text is empty after cleaning",
         ) from exc
 
-    return IngestTextFileResponse.model_validate(result)
+    return IngestTextResponse.model_validate(result)
