@@ -61,6 +61,53 @@ Auralia is split into a backend API/service layer and a frontend review/mapping 
 
 ---
 
+## Voice Persistence (New Requirement)
+
+Auralia includes a **Voice Registry** so voices can be reused across chapters/books.
+
+Two supported voice modes:
+
+1. **Designed Voice (text prompt only)**
+   - Persist `control_text` + generation params
+   - Optionally generate and save a canonical sample clip for stability
+
+2. **Cloned Voice (reference audio)**
+   - Persist canonical `reference_wav_path`
+   - Optional Hi-Fi fields: `prompt_wav_path` + `prompt_text`
+
+### Storage strategy (private/local-first)
+
+For this personal offline tool, default to:
+
+- **SQLite for structured data** (projects, chapters, spans, voice profiles, mappings, jobs)
+- **Local filesystem for audio binaries** (reference clips, generated segments, final outputs)
+
+Recommended paths:
+
+- DB: `data/db/auralia.sqlite`
+- Voice assets: `data/voices/<voice_id>/reference.wav`
+- Optional prompt assets: `data/voices/<voice_id>/prompt.wav`
+
+S3/R2 is **not required** right now. It can be added later behind a storage adapter if you need remote backup/sync.
+
+### Schema management
+
+You can use **Drizzle** to define and migrate the SQLite schema (especially if you want TypeScript-first schema control).
+
+Recommended approach:
+
+- Keep a single migration history as source of truth
+- Route all writes through FastAPI endpoints (frontend should not write DB directly)
+- Optionally generate shared TS/Python types from the same schema contracts
+
+### API requirement
+
+Backend will expose endpoints for creating, listing, updating, deleting, and validating reusable voice profiles.
+
+Frontend React UI will use these endpoints for voice management and assignment.
+
+---
+
 ## Reliability & Cost Controls
 
 Auralia intentionally uses deterministic backend logic for:

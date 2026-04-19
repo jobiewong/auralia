@@ -12,9 +12,12 @@ Build a fully local, character-aware audiobook pipeline that converts prose into
 - **Monorepo:** Turborepo
 - **Backend:** FastAPI (ingestion, LLM orchestration, validation, synthesis pipeline)
 - **Frontend:** React (speaker review + voice mapping UI)
+- **Database:** SQLite (local, single-user) for structured state
+- **Schema control:** Drizzle ORM + migrations (TypeScript-first schema ownership)
 - **LLM Runtime:** Ollama + Qwen 2.5 7B (segmentation + attribution)
 - **TTS:** VoxCPM
 - **Assembly:** FFmpeg
+- **Binary assets:** local filesystem for audio files
 
 ---
 
@@ -41,21 +44,25 @@ Build a fully local, character-aware audiobook pipeline that converts prose into
 
 ---
 
-## M1 — Data Contracts + Deterministic Validators
+## M1 — SQLite Schema + Deterministic Validators
 
-**Objective:** Lock stage interfaces and harden non-LLM correctness checks.
+**Objective:** Lock stage interfaces in SQLite and harden non-LLM correctness checks.
 
 **Status:** ⬜ Not started
 
 **Tasks**
-- [ ] Implement schemas for:
-  - [ ] `cleaned_document`
-  - [ ] `spans_pass1`
-  - [ ] `spans_pass2_attributed`
-  - [ ] `voice_map`
-  - [ ] `synthesis_manifest`
+- [ ] Define initial SQLite schema via Drizzle for:
+  - [ ] `documents`
+  - [ ] `spans`
+  - [ ] `attributions` (or attribution columns on spans)
+  - [ ] `voices`
+  - [ ] `voice_mappings`
+  - [ ] `synthesis_jobs`
+  - [ ] `synthesis_segments`
+- [ ] Create migration baseline and migration workflow
+- [ ] Define local storage layout for reusable voice assets (`data/voices/...`) and outputs (`data/outputs/...`)
 - [ ] Implement deterministic validators:
-  - [ ] schema/type validation
+  - [ ] schema/type validation at API boundary
   - [ ] contiguity (`next.start == prev.end`)
   - [ ] non-overlap
   - [ ] full coverage (0..len(text))
@@ -65,6 +72,7 @@ Build a fully local, character-aware audiobook pipeline that converts prose into
 - [ ] Add unit tests for all validator edge cases
 
 **Definition of Done**
+- SQLite schema + migrations are reproducible from a clean clone.
 - Validation suite catches malformed spans and blocks pipeline progression.
 - Unit tests cover nominal + edge conditions (gaps, overlaps, drift, invalid offsets).
 
@@ -80,7 +88,7 @@ Build a fully local, character-aware audiobook pipeline that converts prose into
 - [ ] Implement local text file ingestion
 - [ ] Implement AO3 ingestion adapter (with rate-limit + compliance guardrails)
 - [ ] HTML/tag stripping + whitespace normalization
-- [ ] Store cleaned text + metadata as `cleaned_document`
+- [ ] Store cleaned text + metadata in `documents` table
 - [ ] Add ingestion endpoint + job record creation
 - [ ] Add tests for malformed HTML and odd whitespace
 
@@ -106,7 +114,7 @@ Build a fully local, character-aware audiobook pipeline that converts prose into
 - [ ] Add tests for chunk boundary edge cases
 
 **Definition of Done**
-- Long chapters produce contiguous validated `spans_pass1` output.
+- Long chapters produce contiguous validated spans persisted in SQLite.
 
 ---
 
@@ -126,13 +134,42 @@ Build a fully local, character-aware audiobook pipeline that converts prose into
 - [ ] Add tests for pronouns/multi-speaker ambiguity
 
 **Definition of Done**
-- `spans_pass2_attributed` generated with deterministic checks and review flags.
+- Attribution results are persisted with deterministic checks and review flags.
 
 ---
 
-## M5 — React Review UI + Voice Mapping
+## M5 — Voice Registry API + React Voice Management
 
-**Objective:** Manual correction gate before synthesis.
+**Objective:** Persist reusable designed/cloned voices and expose them via API/UI.
+
+**Status:** ⬜ Not started
+
+**Tasks**
+- [ ] Implement local voice asset storage (`data/voices/<voice_id>/...`)
+- [ ] Implement `voices` table repository/service layer (SQLite)
+- [ ] Add API endpoints:
+  - [ ] `POST /api/voices` (create designed/cloned/hifi voice profile)
+  - [ ] `GET /api/voices` (list)
+  - [ ] `GET /api/voices/{voice_id}` (detail)
+  - [ ] `PATCH /api/voices/{voice_id}` (edit metadata/params)
+  - [ ] `DELETE /api/voices/{voice_id}` (remove profile and optional assets)
+  - [ ] `POST /api/voices/{voice_id}/validate` (check files + mode requirements)
+- [ ] Add upload/import flow for reference clips
+- [ ] Build React voice library screen (create/edit/delete/test)
+- [ ] Build React voice assignment UI per character + narrator (uses `voice_id`)
+- [ ] Persist voice mappings in `voice_mappings` table
+- [ ] Add tests for API contracts + storage edge cases
+- [ ] Add Drizzle migration for voice-related tables and indexes
+
+**Definition of Done**
+- Voices can be created once and reused across chapters/books via `voice_id`.
+- Voice validation endpoint blocks invalid clone/hifi configs.
+
+---
+
+## M6 — React Review Gate + Speaker Corrections
+
+**Objective:** Manual correction gate for uncertain attribution before synthesis.
 
 **Status:** ⬜ Not started
 
@@ -140,9 +177,7 @@ Build a fully local, character-aware audiobook pipeline that converts prose into
 - [ ] Build character/speaker review screen
 - [ ] Build unresolved item queue (`UNKNOWN` + low-confidence)
 - [ ] Enable inline speaker correction per span
-- [ ] Build voice assignment UI per character + narrator
-- [ ] Persist `voice_map.json`
-- [ ] Implement backend preflight block if unresolved flags remain
+- [ ] Enforce completion gate before synthesis request can be submitted
 - [ ] Add frontend integration tests for review flow
 
 **Definition of Done**
@@ -150,7 +185,7 @@ Build a fully local, character-aware audiobook pipeline that converts prose into
 
 ---
 
-## M6 — Synthesis & FFmpeg Assembly
+## M7 — Synthesis & FFmpeg Assembly
 
 **Objective:** Produce final audiobook outputs from validated, reviewed spans.
 
@@ -170,7 +205,7 @@ Build a fully local, character-aware audiobook pipeline that converts prose into
 
 ---
 
-## M7 — Quality, Observability, and Hardening
+## M8 — Quality, Observability, and Hardening
 
 **Objective:** Make pipeline measurable, resumable, and maintainable.
 
@@ -204,12 +239,13 @@ Build a fully local, character-aware audiobook pipeline that converts prose into
 
 ## Execution Order (Recommended)
 
-`M0 -> M1 -> M2 -> M3 -> M4 -> M5 -> M6 -> M7`
+`M0 -> M1 -> M2 -> M3 -> M4 -> M5 -> M6 -> M7 -> M8`
 
 Reasoning:
 - M1 first avoids costly refactors later.
 - M3/M4 depend on contracts and validators.
-- M5 is a hard gate for unknown speakers before M6 synthesis.
+- M5 establishes reusable voices and APIs before review/synthesis.
+- M6 is a hard gate for unknown speakers before M7 synthesis.
 
 ---
 
@@ -230,7 +266,7 @@ At end of each session, update:
   - [x] Initial repo created and pushed
   - [x] `PLAN.md` created and expanded
   - [x] `README.md` aligned with architecture and goals
-- **Next immediate task:** M0 - initialize Turborepo app/package skeleton
+- **Next immediate task:** M0 - initialize Turborepo app/package skeleton, then M1 SQLite+Drizzle schema baseline
 - **Blockers:** None
 - **Resume commands:**
   - `cd ~/repos/auralia`
@@ -245,6 +281,7 @@ At end of each session, update:
 - M2 Ingestion & Cleaning: ⬜
 - M3 Segmentation + Chunk Merge: ⬜
 - M4 Attribution + Review Flags: ⬜
-- M5 React Review + Voice Mapping: ⬜
-- M6 Synthesis + Assembly: ⬜
-- M7 Quality + Hardening: ⬜
+- M5 Voice Registry API + Voice Management: ⬜
+- M6 React Review + Speaker Corrections: ⬜
+- M7 Synthesis + Assembly: ⬜
+- M8 Quality + Hardening: ⬜

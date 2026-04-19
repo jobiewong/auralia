@@ -40,7 +40,7 @@ Unknown speakers must be returned as `UNKNOWN` and flagged for manual correction
 
 ### 4. Voice Mapping + Manual QA Gate
 
-A React UI lets you assign a VoxCPM voice to each detected character. Mappings are saved as a JSON config so they persist across sessions.
+A React UI lets you assign a VoxCPM voice to each detected character. Mappings and reusable voice profiles are stored in SQLite (with audio asset paths stored as filesystem references).
 
 Any span with `speaker: UNKNOWN` (or low confidence) must be reviewed and corrected in the UI before synthesis can begin.
 
@@ -52,9 +52,15 @@ Batch-generate audio for every span using the assigned voices, then concatenate 
 
 ## Data Contracts (Required)
 
-Define explicit JSON contracts between every stage to prevent drift.
+Define explicit **SQLite-backed** contracts between every stage to prevent drift.
 
-### `cleaned_document.json`
+Storage model:
+
+- **SQLite** (`data/db/auralia.sqlite`) for structured entities and pipeline state
+- **Filesystem** for audio binaries (reference clips, generated segments, final outputs)
+- File paths are stored in DB rows and validated before synthesis
+
+### `cleaned_document` (table/contract example)
 
 ```json
 {
@@ -70,7 +76,7 @@ Define explicit JSON contracts between every stage to prevent drift.
 }
 ```
 
-### `spans_pass1.json`
+### `spans_pass1` (table/contract example)
 
 ```json
 [
@@ -86,7 +92,7 @@ Define explicit JSON contracts between every stage to prevent drift.
 ]
 ```
 
-### `spans_pass2_attributed.json`
+### `spans_pass2_attributed` (table/contract example)
 
 ```json
 [
@@ -113,19 +119,52 @@ Define explicit JSON contracts between every stage to prevent drift.
 ]
 ```
 
-### `voice_map.json`
+### `voice_registry` (table/contract example)
+
+```json
+[
+  {
+    "voice_id": "voice_hermione_v1",
+    "display_name": "Hermione (Book 1)",
+    "mode": "designed",
+    "control_text": "calm, intelligent young woman, warm and clear",
+    "reference_audio_path": null,
+    "prompt_audio_path": null,
+    "prompt_text": null,
+    "cfg_value": 2.0,
+    "inference_timesteps": 10,
+    "is_canonical": true,
+    "created_at": "2026-04-19T12:00:00Z"
+  },
+  {
+    "voice_id": "voice_harry_clone_v1",
+    "display_name": "Harry Clone",
+    "mode": "clone",
+    "control_text": "slightly energetic",
+    "reference_audio_path": "data/voices/voice_harry_clone_v1/reference.wav",
+    "prompt_audio_path": "data/voices/voice_harry_clone_v1/prompt.wav",
+    "prompt_text": "exact transcript for prompt audio",
+    "cfg_value": 2.0,
+    "inference_timesteps": 10,
+    "is_canonical": true,
+    "created_at": "2026-04-19T12:05:00Z"
+  }
+]
+```
+
+### `voice_map` (table/contract example)
 
 ```json
 {
   "narrator": "voice_narrator_01",
   "characters": {
-    "Hermione": "voice_hermione_a",
-    "Harry": "voice_harry_b"
+    "Hermione": "voice_hermione_v1",
+    "Harry": "voice_harry_clone_v1"
   }
 }
 ```
 
-### `synthesis_manifest.json`
+### `synthesis_manifest` (table/contract example)
 
 ```json
 {
@@ -159,6 +198,10 @@ To reduce token usage and cost, perform these checks in backend code, not with L
 6. **Offset-text consistency**: `cleaned_text[start:end] == span.text`
 7. **Dialogue attribution constraints**: dialogue spans must have `speaker` set; unknowns marked `UNKNOWN` + `needs_review: true`
 8. **Synthesis preflight gate**: block synthesis if any `needs_review == true`
+9. **Voice registry checks**:
+   - every mapped `voice_id` must exist in `voice_registry`
+   - `mode=clone` requires `reference_audio_path` to exist on disk
+   - `mode=hifi_clone` requires `prompt_audio_path` + `prompt_text`
 
 These validators should run after each pass and emit machine-readable error reports.
 
