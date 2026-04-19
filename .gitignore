@@ -5,6 +5,8 @@ __pycache__/
 
 # Node
 node_modules/
+dist/
+.turbo/
 
 # Local runtime artifacts
 data/db/*.sqlite

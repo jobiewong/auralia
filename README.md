@@ -19,10 +19,87 @@ The project is designed to run offline, with deterministic validation around LLM
 ## Architecture
 
 - **Backend:** FastAPI
-- **Frontend:** React
+- **Frontend:** React (TanStack Start + Vite; default dev server port **3000**)
 - **Monorepo:** Turborepo
 
 Auralia is split into a backend API/service layer and a frontend review/mapping UI, managed in one monorepo.
+
+---
+
+## Quick start: testing
+
+Run everything from the **repository root** unless noted.
+
+### Prerequisites
+
+- **Node.js** 22 or newer and **npm** 10 or newer (aligned with CI).
+- **Python** 3.12 or newer (3.11+ is allowed by `pyproject.toml`; CI uses 3.12).
+
+### One-time setup
+
+Use a shell whose working directory is the repository root (the directory that contains `package.json` and `pyproject.toml`).
+
+```bash
+npm install
+python -m pip install --upgrade pip
+python -m pip install -e ".[dev]"
+```
+
+The Python step installs the root package (`auralia-api`) in editable mode with **pytest**, **ruff**, and **mypy** so backend tests and linters match what Turborepo runs for `@auralia/api`.
+
+### Run tests
+
+**Whole monorepo (Turborepo):** runs each workspace’s `test` script (Python `pytest` for the API, Vitest for the web app, and no-op stubs where packages have no tests yet).
+
+```bash
+npm test
+```
+
+**Python / FastAPI package only** (same command Turborepo uses for `@auralia/api`):
+
+```bash
+npm run test -w @auralia/api
+```
+
+Or call pytest directly from the repo root:
+
+```bash
+pytest
+pytest tests/validators -q
+```
+
+**Frontend (`@auralia/web`) only:**
+
+```bash
+npm run test -w @auralia/web
+```
+
+**Watch mode while editing the UI** (re-runs on save; run from `apps/web`):
+
+```bash
+cd apps/web && npx vitest
+```
+
+### Match CI locally
+
+Continuous integration runs lint, tests, and typecheck together. From the repo root:
+
+```bash
+npx turbo run lint test typecheck
+```
+
+### Run dev servers
+
+From the repository root, Turborepo starts every workspace that defines a `dev` script (currently the FastAPI API and the web app):
+
+```bash
+npm run dev
+```
+
+- **API:** [http://127.0.0.1:8000](http://127.0.0.1:8000) (health: `/health`, sample JSON: `/api/info`)
+- **Web:** [http://localhost:3000](http://localhost:3000) (TanStack Start CLI default port)
+
+Ensure your root `.env` (see `.env.example`) lists the web origin in `AURALIA_CORS_ORIGINS` if the browser calls the API cross-origin.
 
 ---
 

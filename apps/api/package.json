@@ -1,0 +1,12 @@
+{
+  "name": "@auralia/api",
+  "private": true,
+  "version": "0.0.1",
+  "scripts": {
+    "dev": "cd ../.. && PYTHONPATH=apps/api/src uvicorn auralia_api.main:app --reload --host ${AURALIA_API_HOST:-0.0.0.0} --port ${AURALIA_API_PORT:-8000}",
+    "build": "cd ../.. && python -m hatchling build",
+    "test": "cd ../.. && pytest -q",
+    "lint": "cd ../.. && ruff check apps/api/src tests",
+    "typecheck": "cd ../.. && mypy apps/api/src/auralia_api"
+  }
+}

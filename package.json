@@ -2,16 +2,18 @@
   "name": "auralia",
   "private": true,
   "version": "0.0.1",
-  "workspaces": [
-    "apps/*",
-    "packages/*"
-  ],
+  "packageManager": "npm@10.9.2",
+  "workspaces": ["apps/*", "packages/*"],
   "scripts": {
-    "dev": "echo \"Wire turbo dev after app scaffolds are added\"",
-    "test": "pytest -q",
-    "lint": "echo \"TODO: add linting\"",
-    "typecheck": "echo \"TODO: add typecheck\"",
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
     "db:generate": "npm --workspace @auralia/db run db:generate",
     "db:migrate": "npm --workspace @auralia/db run db:migrate"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.4"
   }
 }

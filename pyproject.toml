@@ -11,12 +11,38 @@ requires-python = ">=3.11"
 dependencies = [
   "fastapi>=0.111.0",
   "pydantic>=2.7.0",
+  "pydantic-settings>=2.3.0",
+  "uvicorn[standard]>=0.30.0",
 ]
 
 [project.optional-dependencies]
 dev = [
+  "mypy>=1.10.0",
   "pytest>=8.2.0",
+  "ruff>=0.6.0",
 ]
+
+[tool.hatch.build.targets.wheel]
+packages = ["apps/api/src/auralia_api"]
+
+[tool.ruff]
+target-version = "py311"
+src = ["apps/api/src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_ignores = true
+explicit_package_bases = true
+mypy_path = "apps/api/src"
+files = ["apps/api/src/auralia_api"]
+
+[[tool.mypy.overrides]]
+module = ["fastapi.*", "pydantic.*", "pydantic_settings.*"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

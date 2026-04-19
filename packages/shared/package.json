@@ -1,0 +1,26 @@
+{
+  "name": "@auralia/shared",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./schema/spans-payload.schema.json": "./schema/spans-payload.schema.json"
+  },
+  "scripts": {
+    "build": "node -e \"console.log('@auralia/shared: no compile step')\"",
+    "lint": "eslint .",
+    "test": "node -e \"console.log('@auralia/shared: no tests yet')\"",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.15.0",
+    "eslint": "^9.15.0",
+    "globals": "^15.12.0",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.15.0"
+  }
+}

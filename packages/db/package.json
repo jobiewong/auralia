@@ -4,14 +4,19 @@
   "version": "0.0.1",
   "type": "module",
   "scripts": {
+    "build": "node -e \"console.log('@auralia/db: no bundle')\"",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "lint": "node -e \"console.log('@auralia/db: no eslint')\"",
+    "test": "node -e \"console.log('@auralia/db: no tests')\"",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
     "drizzle-orm": "^0.41.0"
   },
   "devDependencies": {
+    "@types/node": "^22.10.0",
     "drizzle-kit": "^0.30.4",
     "typescript": "^5.8.3"
   }

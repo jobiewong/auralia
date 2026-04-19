@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://auralia.local/schema/spans-payload.json",
+  "title": "SpansPayload",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["source_id", "chapter_id", "text", "spans"],
+  "properties": {
+    "source_id": { "type": "string" },
+    "chapter_id": { "type": "string" },
+    "text": { "type": "string" },
+    "spans": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/span" }
+    }
+  },
+  "$defs": {
+    "span": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["id", "type", "text", "start", "end"],
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "type": "string", "enum": ["narration", "dialogue"] },
+        "text": { "type": "string" },
+        "start": { "type": "integer" },
+        "end": { "type": "integer" }
+      }
+    }
+  }
+}

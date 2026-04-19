@@ -11,7 +11,7 @@ Build a fully local, character-aware audiobook pipeline that converts prose into
 
 - **Monorepo:** Turborepo
 - **Backend:** FastAPI (ingestion, LLM orchestration, validation, synthesis pipeline)
-- **Frontend:** React (speaker review + voice mapping UI)
+- **Frontend:** React with **TanStack Start** (file routes, SSR-capable dev/build) for the review + voice mapping UI
 - **Database:** SQLite (local, single-user) for structured state
 - **Schema control:** Drizzle ORM + migrations (TypeScript-first schema ownership)
 - **LLM Runtime:** Ollama + Qwen 2.5 7B (segmentation + attribution)
@@ -27,20 +27,28 @@ Build a fully local, character-aware audiobook pipeline that converts prose into
 
 **Objective:** Create runnable monorepo structure and baseline dev workflow.
 
-**Status:** ⬜ Not started
+**Status:** ✅ Completed
 
 **Tasks**
-- [ ] Initialize Turborepo workspace (`apps/api`, `apps/web`, `packages/shared`)
-- [ ] Add Python backend project scaffold + dependency management
-- [ ] Add React frontend scaffold + routing/state baseline
-- [ ] Add shared schema package (JSON schema/types)
-- [ ] Add root scripts (`dev`, `test`, `lint`, `typecheck`)
-- [ ] Add `.env.example` and config loading strategy
-- [ ] Add baseline CI workflow (lint + tests)
+- [x] Initialize Turborepo workspace (`apps/api`, `apps/web`, `packages/shared`)
+- [x] Add Python backend project scaffold + dependency management
+- [x] Add React frontend scaffold + routing/state baseline (TanStack Start + TanStack Router; `AppSession` context baseline)
+- [x] Add shared schema package (JSON schema/types)
+- [x] Add root scripts (`dev`, `test`, `lint`, `typecheck`)
+- [x] Add `.env.example` and config loading strategy
+- [x] Add baseline CI workflow (lint + tests)
 
 **Definition of Done**
 - `turbo run dev` starts backend + frontend.
 - CI passes on a clean clone.
+
+**Delivered artifacts**
+- Root `turbo.json`, `package.json` workspaces (`apps/*`, `packages/*`), and Turborepo `dev` / `test` / `lint` / `typecheck` pipelines
+- `apps/api`: FastAPI entry (`auralia_api.main`), `pydantic-settings` config (`AURALIA_*`), `package.json` scripts delegating to repo-root `pytest` / `ruff` / `mypy` / `uvicorn`
+- `apps/web`: TanStack Start + Vite 8, file routes (`src/routes/*`), Vitest smoke test, dev proxy for `/api` and `/health` to FastAPI on `:8000`
+- `packages/shared`: TypeScript span payload types + `schema/spans-payload.schema.json`
+- `.env.example` and GitHub Actions `.github/workflows/ci.yml` (`npm ci`, `pip install -e ".[dev]"`, `turbo run lint test typecheck`)
+- README **Quick start: testing** (setup + targeted test commands)
 
 ---
 
@@ -249,7 +257,7 @@ Build a fully local, character-aware audiobook pipeline that converts prose into
 `M0 -> M1 -> M2 -> M3 -> M4 -> M5 -> M6 -> M7 -> M8`
 
 Reasoning:
-- M1 first avoids costly refactors later.
+- M0 and M1 establish repo layout, schema, and validators before ingestion and LLM stages (avoids costly refactors later).
 - M3/M4 depend on contracts and validators.
 - M5 establishes reusable voices and APIs before review/synthesis.
 - M6 is a hard gate for unknown speakers before M7 synthesis.
@@ -269,25 +277,28 @@ At end of each session, update:
 ### Current Session Log
 
 - **Last updated:** 2026-04-19
-- **Completed this session:**
-  - [x] M1 SQLite+Drizzle schema baseline implemented (`documents`, `spans`, `attributions`, `voices`, `voice_mappings`, `synthesis_jobs`, `synthesis_segments`)
-  - [x] Baseline migration + migration workflow docs added
-  - [x] Deterministic span validators implemented with machine-readable error reports
-  - [x] Validator edge-case unit tests added (19 passing)
-  - [x] Local storage layout created (`data/voices`, `data/outputs`)
-- **Next immediate task:** M0 - initialize Turborepo app/package skeleton (`apps/api`, `apps/web`, `packages/shared`) and root dev workflow
-- **Blockers:** `npm` is unavailable in this runtime, so Drizzle migration commands were documented but not executed here
+- **Completed in this plan update:**
+  - [x] **M0** — Turborepo root, `apps/api` + `apps/web` + `packages/shared`, root scripts, `.env.example`, FastAPI shell + settings, CI workflow
+  - [x] **M0 (frontend)** — **TanStack Start** + TanStack Router file routes, `router.tsx`, committed `routeTree.gen.ts` for `/` and `/about`
+  - [x] `@auralia/web` → `@auralia/shared` via `file:../../packages/shared` (npm without `workspace:*` support)
+  - [x] README **Quick start: testing** (venv, `pip install -e ".[dev]"`, `npm test`, scoped commands, CI parity)
+- **Already delivered (earlier milestone):**
+  - [x] **M1** — SQLite+Drizzle schema, validators, tests, `data/voices` + `data/outputs`, `docs/migrations.md`
+- **Next immediate task:** **M2** — local text ingestion + cleaning pipeline, persist `documents`, ingestion endpoint + tests
+- **Blockers:** None tracked in-repo; local toolchains need working **Node 22+ / npm 10+** and **Python 3.12+** (see README). Run Drizzle migrations against a real DB when ready: `npm run db:migrate` from repo root.
 - **Resume commands:**
-  - `cd ~/repos/auralia`
+  - `cd <path-to-auralia-clone>`
   - `git pull`
-  - `pytest tests/validators -q`
-  - `npm --workspace @auralia/db run db:migrate`
+  - `npm install` && `source .venv/bin/activate` (or your venv) && `python -m pip install -e ".[dev]"`
+  - `npm test` or `pytest tests/validators -q`
+  - `npm run dev` (starts API + web via Turbo when both workspaces are wired)
+  - `npm run db:migrate`
 
 ---
 
 ## Progress Snapshot
 
-- M0 Repo & Tooling Skeleton: ⬜
+- M0 Repo & Tooling Skeleton: ✅
 - M1 Contracts + Validators: ✅
 - M2 Ingestion & Cleaning: ⬜
 - M3 Segmentation + Chunk Merge: ⬜
