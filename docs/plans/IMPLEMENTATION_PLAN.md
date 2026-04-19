@@ -97,18 +97,29 @@ Build a fully local, character-aware audiobook pipeline that converts prose into
 
 **Objective:** Produce normalized prose input with source metadata.
 
-**Status:** ⬜ Not started
+**Status:** 🟨 In progress
 
 **Tasks**
-- [ ] Implement local text file ingestion
+- [x] Implement local text file ingestion
 - [ ] Implement AO3 ingestion adapter (with rate-limit + compliance guardrails)
-- [ ] HTML/tag stripping + whitespace normalization
-- [ ] Store cleaned text + metadata in `documents` table
-- [ ] Add ingestion endpoint + job record creation
-- [ ] Add tests for malformed HTML and odd whitespace
+- [x] HTML/tag stripping + whitespace normalization
+- [x] Store cleaned text + metadata in `documents` table
+- [x] Add ingestion endpoint + job record creation
+- [x] Add tests for malformed HTML and odd whitespace
 
 **Definition of Done**
 - Inputs from AO3/text become valid `cleaned_document` JSON.
+
+**Delivered so far**
+- New ingestion module under `apps/api/src/auralia_api/ingestion/`:
+  - `cleaning.py` (HTML/entity cleanup + whitespace normalization)
+  - `schemas.py` (request/response contracts)
+  - `service.py` (local file ingestion orchestration)
+  - `storage.py` (SQLite inserts; introduces `ingestion_jobs` table if missing)
+- New API endpoint: `POST /api/ingest/text-file`
+- New tests under `tests/ingestion/`:
+  - `test_cleaning.py`
+  - `test_text_file_ingestion_api.py`
 
 ---
 
@@ -277,22 +288,23 @@ At end of each session, update:
 ### Current Session Log
 
 - **Last updated:** 2026-04-19
-- **Completed in this plan update:**
-  - [x] **M0** — Turborepo root, `apps/api` + `apps/web` + `packages/shared`, root scripts, `.env.example`, FastAPI shell + settings, CI workflow
-  - [x] **M0 (frontend)** — **TanStack Start** + TanStack Router file routes, `router.tsx`, committed `routeTree.gen.ts` for `/` and `/about`
-  - [x] `@auralia/web` → `@auralia/shared` via `file:../../packages/shared` (npm without `workspace:*` support)
-  - [x] README **Quick start: testing** (venv, `pip install -e ".[dev]"`, `npm test`, scoped commands, CI parity)
-- **Already delivered (earlier milestone):**
-  - [x] **M1** — SQLite+Drizzle schema, validators, tests, `data/voices` + `data/outputs`, `docs/migrations.md`
-- **Next immediate task:** **M2** — local text ingestion + cleaning pipeline, persist `documents`, ingestion endpoint + tests
-- **Blockers:** None tracked in-repo; local toolchains need working **Node 22+ / npm 10+** and **Python 3.12+** (see README). Run Drizzle migrations against a real DB when ready: `npm run db:migrate` from repo root.
+- **Completed in this session:**
+  - [x] Pulled latest repo updates from origin/main
+  - [x] Re-validated plan state: M0 ✅, M1 ✅, M2 now active
+  - [x] M2 partial delivery: local text-file ingestion flow (`POST /api/ingest/text-file`)
+  - [x] Implemented cleaning pipeline (tag stripping, entity handling, whitespace normalization)
+  - [x] Persisted cleaned documents to `documents` and ingestion jobs to `ingestion_jobs`
+  - [x] Added ingestion tests for malformed HTML/whitespace and endpoint persistence/error behavior
+- **Still open in M2:**
+  - [ ] AO3 ingestion adapter (with rate-limit + compliance guardrails)
+- **Next immediate task:** finish AO3 ingestion adapter + tests, then mark M2 ✅
+- **Blockers:** Runtime here still lacks npm; Python tests run and pass (`pytest tests/ -q`).
 - **Resume commands:**
-  - `cd <path-to-auralia-clone>`
+  - `cd ~/repos/auralia`
   - `git pull`
-  - `npm install` && `source .venv/bin/activate` (or your venv) && `python -m pip install -e ".[dev]"`
-  - `npm test` or `pytest tests/validators -q`
-  - `npm run dev` (starts API + web via Turbo when both workspaces are wired)
-  - `npm run db:migrate`
+  - `pytest tests/ingestion -q`
+  - `pytest tests/ -q`
+  - `npm run dev` (on a machine with npm available)
 
 ---
 
