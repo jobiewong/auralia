@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
@@ -30,6 +32,7 @@ class CleanedDocumentOut(BaseModel):
     text: str
     text_length: int
     normalization: dict[str, bool]
+    source_metadata: dict[str, Any] | None = None
 
 
 class IngestTextResponse(BaseModel):

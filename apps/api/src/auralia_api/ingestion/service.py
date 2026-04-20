@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from dataclasses import asdict
 from uuid import uuid4
 
-from .ao3 import fetch_ao3_chapter
+from .ao3 import AO3Chapter, fetch_ao3_chapter
 from .cleaning import clean_prose_text
 from .schemas import IngestAo3Request, IngestTextRequest
 from .storage import insert_document, insert_ingestion_job
@@ -17,6 +18,7 @@ def _persist_ingestion_result(
     chapter_id: str,
     title: str | None,
     cleaned_text: str,
+    source_metadata: dict | None = None,
 ) -> dict:
     document_id = f"doc_{uuid4().hex[:12]}"
     job_id = f"ing_{uuid4().hex[:12]}"
@@ -35,6 +37,7 @@ def _persist_ingestion_result(
             "quotes_normalized": True,
             "punctuation_normalized": True,
         },
+        "source_metadata": source_metadata,
     }
 
     job = {
@@ -52,6 +55,19 @@ def _persist_ingestion_result(
     return {
         "ingestion_job": {"id": job_id, "status": "completed"},
         "cleaned_document": document,
+    }
+
+
+def _ao3_source_metadata(chapter: AO3Chapter) -> dict:
+    return {
+        "source": "ao3",
+        "work_id": chapter.work_id,
+        "work_title": chapter.work_title,
+        "authors": [asdict(a) for a in chapter.authors],
+        "chapter_id": chapter.chapter_id,
+        "chapter_title": chapter.title,
+        "previous_chapter_url": chapter.previous_chapter_url,
+        "next_chapter_url": chapter.next_chapter_url,
     }
 
 
@@ -86,4 +102,5 @@ def ingest_ao3(*, req: IngestAo3Request, sqlite_path: str) -> dict:
         chapter_id=chapter_id,
         title=title,
         cleaned_text=chapter.cleaned_text,
+        source_metadata=_ao3_source_metadata(chapter),
     )

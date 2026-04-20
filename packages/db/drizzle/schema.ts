@@ -13,8 +13,26 @@ export const documents = sqliteTable("documents", {
   text: text("text").notNull(),
   textLength: integer("text_length").notNull(),
   normalization: text("normalization").notNull(), // JSON blob
+  sourceMetadata: text("source_metadata"), // JSON blob, source-specific (AO3 author/work/nav, etc.)
   ...timestamps,
 });
+
+export const ingestionJobs = sqliteTable(
+  "ingestion_jobs",
+  {
+    id: text("id").primaryKey(),
+    sourceType: text("source_type").notNull(),
+    sourceRef: text("source_ref").notNull(),
+    status: text("status").notNull(),
+    documentId: text("document_id").references(() => documents.id, { onDelete: "set null" }),
+    errorMessage: text("error_message"),
+    ...timestamps,
+  },
+  (table) => [
+    index("idx_ingestion_jobs_document_id").on(table.documentId),
+    index("idx_ingestion_jobs_status").on(table.status),
+  ],
+);
 
 export const spans = sqliteTable(
   "spans",

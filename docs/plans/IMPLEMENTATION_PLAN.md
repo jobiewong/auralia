@@ -97,39 +97,48 @@ Build a fully local, character-aware audiobook pipeline that converts prose into
 
 **Objective:** Produce normalized prose input with source metadata.
 
-**Status:** 🟨 In progress
+**Status:** ✅ Completed
 
 **Tasks**
 - [x] Implement plain-text ingestion endpoint accepting raw text (markdown or plain) in the request body; both formats flow through the same cleaning pipeline before storage (replaces the prior local-text-file ingestion approach)
 - [x] Implement AO3 ingestion adapter (with rate-limit + compliance guardrails)
 - [x] HTML/tag stripping + whitespace normalization
+- [x] Typographic normalization (curly quotes, ellipses, em/en dashes → ASCII)
 - [x] Store cleaned text + metadata in `documents` table
 - [x] Add ingestion endpoint + job record creation
 - [x] Add tests for malformed HTML and odd whitespace
+- [x] Capture AO3 work-level metadata (work title, authors, prev/next chapter URLs) in `documents.source_metadata` for future crawling
+- [x] Move `ingestion_jobs` table under Drizzle ownership (canonical schema)
 
 **Definition of Done**
 - Inputs from AO3/text become valid `cleaned_document` JSON.
 
-**Delivered so far**
+**Delivered**
 - Ingestion module under `apps/api/src/auralia_api/ingestion/`:
-  - `cleaning.py` (HTML/entity cleanup + markdown/plain-text normalization)
-  - `ao3.py` (AO3 chapter fetch + parse with conservative request behavior)
+  - `cleaning.py` (HTML/entity cleanup, markdown/plain-text normalization, typographic normalization)
+  - `ao3.py` (AO3 chapter fetch + parse with conservative request behavior and work-level metadata extraction)
   - `schemas.py` (request/response contracts for text + AO3 ingestion)
   - `service.py` (ingestion orchestration + persistence)
-  - `storage.py` (SQLite inserts; introduces `ingestion_jobs` table if missing)
+  - `storage.py` (SQLite inserts; mirrors Drizzle-owned schema for dev bootstrap)
 - API endpoints:
   - `POST /api/ingest/text`
   - `POST /api/ingest/ao3`
+- Schema additions (Drizzle-owned):
+  - `documents.source_metadata` JSON column (migration `0001_m2_documents_source_metadata.sql`)
+  - `ingestion_jobs` table promoted from Python bootstrap to Drizzle (migration `0002_m2_ingestion_jobs.sql`)
 - Tests under `tests/ingestion/`:
   - `test_cleaning.py`
   - `test_text_ingestion_api.py`
   - `test_ao3_adapter.py`
   - `test_ao3_ingestion_api.py`
+- Docs: `docs/ao3_ingestion.md` (parsing technique, Cloudflare mitigation, future upgrades)
 
 **AO3 guardrails implemented**
 - Restricts ingestion to `https://archiveofourown.org/works/<id>/chapters/<id>` URLs
 - Enforces minimum interval between outbound AO3 requests in-process
 - Uses single request per ingestion call (no crawling), bounded response size, and strict chapter-body extraction
+- Browser-shaped User-Agent + `Accept-*` headers to bypass Cloudflare HTTP 525 bot rejection
+- Detects silent redirects to the AO3 homepage (restricted/deleted works) and surfaces as explicit fetch errors
 - Returns explicit validation/fetch/parse errors with safe API mappings
 
 ---
@@ -298,16 +307,20 @@ At end of each session, update:
 
 ### Current Session Log
 
-- **Last updated:** 2026-04-19
+- **Last updated:** 2026-04-20
 - **Completed in this session:**
-  - [x] Pulled latest repo updates from origin/main and aligned plan text to current ingestion architecture
-  - [x] Completed M2 plain-text request-body ingestion endpoint (`POST /api/ingest/text`)
-  - [x] Completed M2 AO3 ingestion adapter with conservative request guardrails (`POST /api/ingest/ao3`)
-  - [x] Added AO3 adapter/unit tests and AO3 endpoint integration tests
-  - [x] Verified ingestion coverage + full Python suite (`pytest tests/ingestion -q`, `pytest tests/ -q`)
-- **M2 status:** ✅ complete for current milestone definition (text + AO3 ingestion, cleaning, persistence, endpoints, tests)
+  - [x] Fixed AO3 HTTP 525 by switching to a browser-shaped User-Agent + `Accept-*` headers
+  - [x] Extended AO3 parser to extract work title, authors (with absolute profile URLs), and prev/next chapter URLs
+  - [x] Added `documents.source_metadata` JSON column (Drizzle migration `0001_m2_documents_source_metadata.sql`) to hold source-specific metadata
+  - [x] Populated AO3 `source_metadata` with work_id/work_title/authors/chapter_id/chapter_title/prev+next chapter URLs
+  - [x] Added redirect-to-homepage detection for restricted/locked AO3 works
+  - [x] Normalized curly quotes, ellipses, and em/en dashes to ASCII in the cleaning pipeline
+  - [x] Promoted `ingestion_jobs` from Python-only bootstrap to Drizzle (migration `0002_m2_ingestion_jobs.sql`); Python `storage.py` now mirrors Drizzle as dev-convenience bootstrap only
+  - [x] Wrote `docs/ao3_ingestion.md` (parsing selectors, Cloudflare mitigation, rate/size limits, `source_metadata` shape, ranked future upgrades)
+  - [x] Full Python suite green (`pytest tests/ -q`: 39 passed)
+- **M2 status:** ✅ complete
 - **Next immediate task:** begin M3 segmentation pass scaffolding (chunking + prompt call + response validation loop)
-- **Blockers:** Runtime here still lacks npm; Python tests pass in this environment.
+- **Blockers:** none.
 - **Resume commands:**
   - `cd ~/repos/auralia`
   - `git pull`

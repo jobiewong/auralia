@@ -11,12 +11,17 @@ class _FakeResponse:
         self,
         body: bytes,
         content_type: str = "text/html; charset=utf-8",
+        final_url: str = "https://archiveofourown.org/works/1/chapters/1",
     ) -> None:
         self._body = body
+        self._final_url = final_url
         self.headers = {"Content-Type": content_type}
 
     def read(self, _size: int = -1) -> bytes:
         return self._body
+
+    def geturl(self) -> str:
+        return self._final_url
 
     def __enter__(self):
         return self
@@ -34,6 +39,13 @@ def _client_with_db(monkeypatch, db_path: Path) -> TestClient:
 def test_ingest_ao3_endpoint_persists_cleaned_document(monkeypatch, tmp_path):
     html = (
         "<html><body>"
+        "<div id='workskin'>"
+        "<div class='preface group'>"
+        "<h2 class='title heading'>Hogwarts and All That</h2>"
+        "<h3 class='byline heading'>"
+        "<a rel='author' href='/users/JaneAuthor/pseuds/JaneAuthor'>JaneAuthor</a>"
+        "</h3>"
+        "</div>"
         "<div id='chapters'>"
         "<h3 class='title'>Chapter 1: Year 1</h3>"
         "<div class='userstuff module'>"
@@ -45,6 +57,15 @@ def test_ingest_ao3_endpoint_persists_cleaned_document(monkeypatch, tmp_path):
         "to come back for her second year.</p>"
         "</div>"
         "</div>"
+        "</div>"
+        "<ul class='work navigation actions'>"
+        "<li class='chapter previous'>"
+        "<a href='/works/52818466/chapters/133596876'>&larr; Previous</a>"
+        "</li>"
+        "<li class='chapter next'>"
+        "<a href='/works/52818466/chapters/133596878'>Next &rarr;</a>"
+        "</li>"
+        "</ul>"
         "</body></html>"
     ).encode("utf-8")
 
@@ -74,6 +95,23 @@ def test_ingest_ao3_endpoint_persists_cleaned_document(monkeypatch, tmp_path):
         "Chapter 1: Year 1\n\n"
         "It all started when Lara Sanders got her letter from Hogwarts.",
     )
+
+    metadata = payload["cleaned_document"]["source_metadata"]
+    assert metadata == {
+        "source": "ao3",
+        "work_id": "52818466",
+        "work_title": "Hogwarts and All That",
+        "authors": [
+            {
+                "name": "JaneAuthor",
+                "url": "https://archiveofourown.org/users/JaneAuthor/pseuds/JaneAuthor",
+            },
+        ],
+        "chapter_id": "133596877",
+        "chapter_title": "Chapter 1: Year 1",
+        "previous_chapter_url": "https://archiveofourown.org/works/52818466/chapters/133596876",
+        "next_chapter_url": "https://archiveofourown.org/works/52818466/chapters/133596878",
+    }
 
 
 def test_ingest_ao3_endpoint_rejects_invalid_url(monkeypatch, tmp_path):
