@@ -14,6 +14,7 @@ export const documents = sqliteTable("documents", {
   textLength: integer("text_length").notNull(),
   normalization: text("normalization").notNull(), // JSON blob
   sourceMetadata: text("source_metadata"), // JSON blob, source-specific (AO3 author/work/nav, etc.)
+  roster: text("roster"), // JSON blob: cast list produced by attribution pass (canonical_name, aliases, descriptor)
   ...timestamps,
 });
 

@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS documents (
   text_length INTEGER NOT NULL,
   normalization TEXT NOT NULL,
   source_metadata TEXT,
+  roster TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -78,7 +79,14 @@ def _connect(sqlite_path: str) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON;")
     conn.executescript(MIGRATION_SQL)
+    _ensure_documents_roster(conn)
     return conn
+
+
+def _ensure_documents_roster(conn: sqlite3.Connection) -> None:
+    cols = {row["name"] for row in conn.execute("PRAGMA table_info(documents);")}
+    if "roster" not in cols:
+        conn.execute("ALTER TABLE documents ADD COLUMN roster TEXT;")
 
 
 def load_document_with_spans(*, sqlite_path: str, document_id: str) -> dict[str, Any]:
@@ -127,6 +135,21 @@ def document_has_attributions(*, sqlite_path: str, document_id: str) -> bool:
     return row is not None
 
 
+def delete_attributions_for_document(
+    *, sqlite_path: str, document_id: str
+) -> int:
+    """Delete all attribution rows tied to the document's spans. Returns count."""
+    with _connect(sqlite_path) as conn:
+        cur = conn.execute(
+            """
+            DELETE FROM attributions
+            WHERE span_id IN (SELECT id FROM spans WHERE document_id = ?)
+            """,
+            (document_id,),
+        )
+        return cur.rowcount
+
+
 def insert_attributions(
     *,
     sqlite_path: str,
@@ -156,6 +179,20 @@ def insert_attributions(
                 )
                 for row in attributions
             ],
+        )
+
+
+def save_document_roster(
+    *,
+    sqlite_path: str,
+    document_id: str,
+    roster: list[dict[str, Any]],
+) -> None:
+    with _connect(sqlite_path) as conn:
+        conn.execute(
+            "UPDATE documents SET roster = ?, updated_at = CURRENT_TIMESTAMP "
+            "WHERE id = ?",
+            (json.dumps(roster), document_id),
         )
 
 

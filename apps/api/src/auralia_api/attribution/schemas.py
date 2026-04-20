@@ -35,3 +35,4 @@ class AttributeResponse(BaseModel):
     attribution_job: AttributionJobOut
     roster: list[CharacterRosterOut]
     attributions: list[AttributionOut]
+    force_wipe: dict[str, int] | None = None

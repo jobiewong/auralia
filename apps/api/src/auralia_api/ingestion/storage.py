@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS documents (
   text_length INTEGER NOT NULL,
   normalization TEXT NOT NULL,
   source_metadata TEXT,
+  roster TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -45,14 +46,16 @@ def _connect(sqlite_path: str) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON;")
     conn.executescript(MIGRATION_SQL)
-    _ensure_documents_source_metadata(conn)
+    _ensure_documents_columns(conn)
     return conn
 
 
-def _ensure_documents_source_metadata(conn: sqlite3.Connection) -> None:
+def _ensure_documents_columns(conn: sqlite3.Connection) -> None:
     cols = {row["name"] for row in conn.execute("PRAGMA table_info(documents);")}
     if "source_metadata" not in cols:
         conn.execute("ALTER TABLE documents ADD COLUMN source_metadata TEXT;")
+    if "roster" not in cols:
+        conn.execute("ALTER TABLE documents ADD COLUMN roster TEXT;")
 
 
 def insert_document(*, sqlite_path: str, document: dict) -> None:

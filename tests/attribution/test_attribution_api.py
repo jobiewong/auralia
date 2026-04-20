@@ -80,6 +80,47 @@ def test_attribute_endpoint_409_already_attributed(monkeypatch, tmp_path):
     assert second.status_code == 409
 
 
+def test_attribute_endpoint_force_rewipes_attributions(monkeypatch, tmp_path):
+    import sqlite3
+
+    db_path = tmp_path / "auralia.sqlite"
+    client = _client_with_db(monkeypatch, db_path)
+    doc_id = _ingest_and_segment(client, '"Hi," Harry said. "Yo," Ron replied.')
+
+    monkeypatch.setattr(
+        "auralia_api.attribution.service.extract_character_roster",
+        lambda **kwargs: (
+            [
+                {"canonical_name": "Harry", "aliases": ["Harry"], "descriptor": ""},
+                {"canonical_name": "Ron", "aliases": ["Ron"], "descriptor": ""},
+            ],
+            {"prompt_eval_count": 0, "eval_count": 0, "duration_ms": 0},
+        ),
+    )
+
+    first = client.post("/api/attribute", json={"document_id": doc_id})
+    assert first.status_code == 201
+    assert first.json()["force_wipe"] is None
+    first_attr_count = len(first.json()["attributions"])
+
+    forced = client.post(
+        "/api/attribute?force=true", json={"document_id": doc_id}
+    )
+    assert forced.status_code == 201, forced.text
+    assert forced.json()["force_wipe"] == {
+        "attributions_deleted": first_attr_count,
+    }
+
+    with sqlite3.connect(db_path) as conn:
+        attr_count = conn.execute("SELECT COUNT(*) FROM attributions").fetchone()[0]
+        job_count = conn.execute(
+            "SELECT COUNT(*) FROM attribution_jobs WHERE document_id = ?",
+            (doc_id,),
+        ).fetchone()[0]
+    assert attr_count == first_attr_count
+    assert job_count == 2
+
+
 def test_attribute_endpoint_422_on_validator_failure(monkeypatch, tmp_path):
     db_path = tmp_path / "auralia.sqlite"
     client = _client_with_db(monkeypatch, db_path)

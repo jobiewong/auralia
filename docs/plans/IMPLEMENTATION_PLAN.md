@@ -189,7 +189,7 @@ Build a fully local, character-aware audiobook pipeline that converts prose into
 
 **Objective:** Attribute speakers for dialogue spans and flag uncertain outputs.
 
-**Status:** 🟨 Nearly complete — authoritative spec lives in `docs/plans/M4_ATTRIBUTION.md`.
+**Status:** ⏸ Paused — pipeline is functional end-to-end against real Qwen3 8B. Benchmarking + prompt/threshold tuning deferred to a later session. Authoritative spec lives in `docs/plans/M4_ATTRIBUTION.md`.
 
 **Tasks**
 - [x] Character roster extraction (LLM pass A)
@@ -359,7 +359,8 @@ At end of each session, update:
     - `AttributionParseError` carries a `raw_response` attribute; failed-job `error_report` includes a `raw_response_snippet` for diagnosis without reproduction.
     - Removed stray `print(roster)` debug statement.
   - [x] End-to-end smoke run against real Qwen3 8B succeeded — `POST /api/attribute` returns attributions and persists rows to `attributions` + `attribution_jobs`.
-  - [x] Full Python suite green (`pytest tests/ -q`: 105 passed). `ruff check apps/api/src tests` clean. `mypy apps/api/src/auralia_api` clean (0 errors across 28 files).
+  - [x] Added `documents.roster` JSON column (Drizzle migration `0005_m4_documents_roster.sql` + Python bootstrap mirrors) so the expensive LLM roster extraction can be cached per document for future reuse; `save_document_roster()` is called on successful attribution.
+  - [x] Full Python suite green (`pytest tests/ -q`: 106 passed). `ruff check apps/api/src tests` clean. `mypy apps/api/src/auralia_api` clean (0 errors across 28 files).
 - **M4 status:** 🟨 nearly complete — pipeline, validators, API, tests, and live-LLM robustness all delivered. Benchmark fixture set + measured accuracy tuning still outstanding.
 - **Next immediate task:** build the hand-labeled benchmark fixture set (20 chapter excerpts covering alternation, pronoun tags, group speech, split dialogue) and wire `tests/attribution/test_benchmark.py` as an opt-in gated test. Use the resulting accuracy numbers to decide whether the prompts/thresholds need further tuning before moving to M5.
 - **Blockers:** none.
@@ -378,7 +379,7 @@ At end of each session, update:
 - M1 Contracts + Validators: ✅
 - M2 Ingestion & Cleaning: ✅
 - M3 Segmentation (deterministic quote splitter): ✅
-- M4 Attribution + Review Flags: 🟨 (pipeline delivered; benchmark + live smoke run outstanding)
+- M4 Attribution + Review Flags: ⏸ (pipeline + live Qwen3 8B smoke run delivered; benchmarking paused)
 - M5 Voice Registry API + Voice Management: ⬜
 - M6 React Review + Speaker Corrections: ⬜
 - M7 Synthesis + Assembly: ⬜

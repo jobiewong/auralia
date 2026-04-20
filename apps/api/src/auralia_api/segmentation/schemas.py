@@ -29,3 +29,4 @@ class SegmentationJobOut(BaseModel):
 class SegmentResponse(BaseModel):
     segmentation_job: SegmentationJobOut
     spans: list[SpanOut]
+    force_wipe: dict[str, int] | None = None

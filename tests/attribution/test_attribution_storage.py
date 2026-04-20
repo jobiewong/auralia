@@ -1,8 +1,10 @@
+import json
 import sqlite3
 
 from auralia_api.attribution.storage import (
     insert_attribution_job,
     insert_attributions,
+    save_document_roster,
 )
 
 
@@ -93,3 +95,61 @@ def test_storage_inserts_attributions_and_job(tmp_path):
 
     assert attr_count == 1
     assert job_count == 1
+
+
+def test_save_document_roster_persists_json(tmp_path):
+    db_path = tmp_path / "auralia.sqlite"
+
+    conn = sqlite3.connect(db_path)
+    conn.executescript(
+        """
+        CREATE TABLE documents (
+          id TEXT PRIMARY KEY NOT NULL,
+          source_id TEXT NOT NULL,
+          chapter_id TEXT NOT NULL,
+          title TEXT,
+          text TEXT NOT NULL,
+          text_length INTEGER NOT NULL,
+          normalization TEXT NOT NULL,
+          source_metadata TEXT,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO documents (
+            id, source_id, chapter_id, title, text, text_length, normalization
+        ) VALUES ('doc_1', 'inline:test', 'ch_01', 'Title', '"Hi"', 4, '{}')
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    roster = [
+        {
+            "canonical_name": "Harry",
+            "aliases": ["Potter"],
+            "descriptor": "The protagonist.",
+        },
+        {
+            "canonical_name": "Ron",
+            "aliases": ["Weasley"],
+            "descriptor": "Best friend.",
+        },
+    ]
+
+    save_document_roster(
+        sqlite_path=str(db_path),
+        document_id="doc_1",
+        roster=roster,
+    )
+
+    conn = sqlite3.connect(db_path)
+    stored = conn.execute(
+        "SELECT roster FROM documents WHERE id = 'doc_1'"
+    ).fetchone()[0]
+    conn.close()
+
+    assert json.loads(stored) == roster

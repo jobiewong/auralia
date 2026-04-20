@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 
 from auralia_api.attribution.schemas import (
@@ -83,12 +83,22 @@ def ingest_text_endpoint(req: IngestTextRequest) -> IngestTextResponse:
     response_model=SegmentResponse,
     status_code=status.HTTP_201_CREATED,
 )
-def segment_endpoint(req: SegmentRequest) -> SegmentResponse:
+def segment_endpoint(
+    req: SegmentRequest,
+    force: bool = Query(
+        False,
+        description=(
+            "If true and the document already has spans, delete them "
+            "(cascading to any attributions) and re-run."
+        ),
+    ),
+) -> SegmentResponse:
     settings = get_settings()
     try:
         result = segment_document(
             document_id=req.document_id,
             sqlite_path=settings.sqlite_path,
+            force=force,
         )
     except DocumentNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -131,7 +141,16 @@ def ingest_ao3_endpoint(req: IngestAo3Request) -> IngestTextResponse:
     response_model=AttributeResponse,
     status_code=status.HTTP_201_CREATED,
 )
-def attribute_endpoint(req: AttributeRequest) -> AttributeResponse:
+def attribute_endpoint(
+    req: AttributeRequest,
+    force: bool = Query(
+        False,
+        description=(
+            "If true and the document already has attributions, delete them "
+            "(and overwrite the cached roster on success) and re-run."
+        ),
+    ),
+) -> AttributeResponse:
     settings = get_settings()
     try:
         result = attribute_document(
@@ -145,6 +164,7 @@ def attribute_endpoint(req: AttributeRequest) -> AttributeResponse:
             max_window_chars=settings.attribution_max_window_chars,
             max_gap_chars=settings.attribution_max_gap_chars,
             max_retries=settings.attribution_max_retries,
+            force=force,
         )
     except AttributionDocumentNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

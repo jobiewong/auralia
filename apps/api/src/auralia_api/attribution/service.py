@@ -14,10 +14,12 @@ from .roster import extract_character_roster
 from .storage import (
     AlreadyAttributedError,
     DocumentNotFoundError,
+    delete_attributions_for_document,
     document_has_attributions,
     insert_attribution_job,
     insert_attributions,
     load_document_with_spans,
+    save_document_roster,
 )
 from .validators import run_all_attribution_validators
 from .windower import build_attribution_windows
@@ -44,12 +46,21 @@ def attribute_document(
     max_window_chars: int,
     max_gap_chars: int,
     max_retries: int,
+    force: bool = False,
 ) -> dict[str, Any]:
     document = load_document_with_spans(
         sqlite_path=sqlite_path, document_id=document_id
     )
+    force_wipe: dict[str, int] | None = None
     if document_has_attributions(sqlite_path=sqlite_path, document_id=document_id):
-        raise AlreadyAttributedError(f"document already attributed: {document_id}")
+        if not force:
+            raise AlreadyAttributedError(
+                f"document already attributed: {document_id}"
+            )
+        wiped = delete_attributions_for_document(
+            sqlite_path=sqlite_path, document_id=document_id
+        )
+        force_wipe = {"attributions_deleted": wiped}
 
     spans: list[dict[str, Any]] = document["spans"]
     dialogue_ids = [s["id"] for s in spans if s.get("type") == "dialogue"]
@@ -179,6 +190,13 @@ def attribute_document(
         ]
         insert_attributions(sqlite_path=sqlite_path, attributions=persisted_rows)
 
+        if roster:
+            save_document_roster(
+                sqlite_path=sqlite_path,
+                document_id=document["id"],
+                roster=roster,
+            )
+
         stats = _build_stats(
             model_name=model_name,
             roster_size=len(roster),
@@ -210,6 +228,7 @@ def attribute_document(
             },
             "roster": roster,
             "attributions": merged,
+            "force_wipe": force_wipe,
         }
     except (DocumentNotFoundError, AlreadyAttributedError, AttributionValidationError):
         raise

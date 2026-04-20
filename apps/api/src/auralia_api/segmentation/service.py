@@ -10,6 +10,7 @@ from .quote_segmenter import SpanInterval, segment_text_by_quotes
 from .storage import (
     AlreadySegmentedError,
     DocumentNotFoundError,
+    delete_spans_for_document,
     document_has_spans,
     insert_segmentation_job,
     insert_spans,
@@ -32,6 +33,7 @@ def segment_document(
     *,
     document_id: str,
     sqlite_path: str,
+    force: bool = False,
 ) -> dict[str, Any]:
     """Run deterministic quote-based segmentation for an ingested document.
 
@@ -40,12 +42,24 @@ def segment_document(
     bug in the segmenter itself, since the algorithm is deterministic): persists
     a failed segmentation_jobs row with the report and raises
     SegmentationValidationError.
+
+    When ``force`` is True and spans already exist, the prior spans are deleted
+    (cascading to any attributions via FK) and the run proceeds.
     """
     document = load_document(sqlite_path=sqlite_path, document_id=document_id)
+    force_wipe: dict[str, int] | None = None
     if document_has_spans(sqlite_path=sqlite_path, document_id=document_id):
-        raise AlreadySegmentedError(
-            f"document already segmented: {document_id}"
+        if not force:
+            raise AlreadySegmentedError(
+                f"document already segmented: {document_id}"
+            )
+        spans_deleted, attrs_cascaded = delete_spans_for_document(
+            sqlite_path=sqlite_path, document_id=document_id
         )
+        force_wipe = {
+            "spans_deleted": spans_deleted,
+            "attributions_cascaded": attrs_cascaded,
+        }
 
     source_text: str = document["text"]
     intervals = segment_text_by_quotes(source_text)
@@ -109,6 +123,7 @@ def segment_document(
             "stats": stats,
         },
         "spans": spans,
+        "force_wipe": force_wipe,
     }
 
 

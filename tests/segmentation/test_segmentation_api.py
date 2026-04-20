@@ -109,6 +109,47 @@ def test_segment_endpoint_rejects_already_segmented(monkeypatch, tmp_path):
     assert second.status_code == 409
 
 
+def test_segment_endpoint_force_rewipes_spans_and_cascades_attributions(
+    monkeypatch, tmp_path
+):
+    db_path = tmp_path / "auralia.sqlite"
+    client = _client_with_db(monkeypatch, db_path)
+    doc_id = _ingest(client, '"Hi," Harry said. "Yo," Ron replied.')
+
+    first = client.post("/api/segment", json={"document_id": doc_id})
+    assert first.status_code == 201
+    first_spans = first.json()["spans"]
+    assert first.json()["force_wipe"] is None
+
+    monkeypatch.setattr(
+        "auralia_api.attribution.service.extract_character_roster",
+        lambda **kwargs: (
+            [
+                {"canonical_name": "Harry", "aliases": ["Harry"], "descriptor": ""},
+                {"canonical_name": "Ron", "aliases": ["Ron"], "descriptor": ""},
+            ],
+            {"prompt_eval_count": 0, "eval_count": 0, "duration_ms": 0},
+        ),
+    )
+    attr = client.post("/api/attribute", json={"document_id": doc_id})
+    assert attr.status_code == 201
+    dialogue_count = sum(1 for s in first_spans if s["type"] == "dialogue")
+
+    forced = client.post(
+        "/api/segment?force=true", json={"document_id": doc_id}
+    )
+    assert forced.status_code == 201, forced.text
+    wipe = forced.json()["force_wipe"]
+    assert wipe == {
+        "spans_deleted": len(first_spans),
+        "attributions_cascaded": dialogue_count,
+    }
+
+    with sqlite3.connect(db_path) as conn:
+        attr_rows = conn.execute("SELECT COUNT(*) FROM attributions").fetchone()[0]
+    assert attr_rows == 0
+
+
 def test_segment_endpoint_handles_narration_only(monkeypatch, tmp_path):
     db_path = tmp_path / "auralia.sqlite"
     client = _client_with_db(monkeypatch, db_path)

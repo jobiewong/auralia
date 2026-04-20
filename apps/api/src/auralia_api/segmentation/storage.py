@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS documents (
   text_length INTEGER NOT NULL,
   normalization TEXT NOT NULL,
   source_metadata TEXT,
+  roster TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -36,6 +37,18 @@ CREATE TABLE IF NOT EXISTS spans (
 );
 CREATE INDEX IF NOT EXISTS idx_spans_document_offsets
   ON spans (document_id, start, end);
+
+CREATE TABLE IF NOT EXISTS attributions (
+  id TEXT PRIMARY KEY NOT NULL,
+  span_id TEXT NOT NULL,
+  speaker TEXT NOT NULL,
+  speaker_confidence REAL NOT NULL DEFAULT 0,
+  needs_review INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (span_id) REFERENCES spans(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_attributions_span_id ON attributions (span_id);
 
 CREATE TABLE IF NOT EXISTS segmentation_jobs (
   id TEXT PRIMARY KEY NOT NULL,
@@ -70,7 +83,14 @@ def _connect(sqlite_path: str) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON;")
     conn.executescript(MIGRATION_SQL)
+    _ensure_documents_roster(conn)
     return conn
+
+
+def _ensure_documents_roster(conn: sqlite3.Connection) -> None:
+    cols = {row["name"] for row in conn.execute("PRAGMA table_info(documents);")}
+    if "roster" not in cols:
+        conn.execute("ALTER TABLE documents ADD COLUMN roster TEXT;")
 
 
 def load_document(*, sqlite_path: str, document_id: str) -> dict[str, Any]:
@@ -91,6 +111,32 @@ def document_has_spans(*, sqlite_path: str, document_id: str) -> bool:
             (document_id,),
         ).fetchone()
     return row is not None
+
+
+def delete_spans_for_document(
+    *, sqlite_path: str, document_id: str
+) -> tuple[int, int]:
+    """Delete spans for a document. Returns (spans_deleted, attributions_cascaded).
+
+    Attributions with a FK on span_id cascade-delete automatically via
+    ON DELETE CASCADE. The count is captured before the delete for reporting.
+    """
+    with _connect(sqlite_path) as conn:
+        attrs_row = conn.execute(
+            """
+            SELECT COUNT(*) FROM attributions a
+            JOIN spans s ON s.id = a.span_id
+            WHERE s.document_id = ?
+            """,
+            (document_id,),
+        ).fetchone()
+        attrs_count = int(attrs_row[0]) if attrs_row else 0
+        cur = conn.execute(
+            "DELETE FROM spans WHERE document_id = ?",
+            (document_id,),
+        )
+        spans_count = cur.rowcount
+    return spans_count, attrs_count
 
 
 def insert_segmentation_job(
