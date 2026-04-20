@@ -30,6 +30,32 @@ class Settings(BaseSettings):
         description="Comma-separated list of allowed CORS origins.",
     )
 
+    ollama_base_url: str = Field(
+        default="http://localhost:11434",
+        description="Base URL of the local Ollama server.",
+    )
+    segmentation_model: str = Field(
+        default="qwen3:8b",
+        description="Ollama model tag used for segmentation.",
+    )
+    chunk_size: int = Field(
+        default=3000, ge=500, le=16000, description="Target chunk size (chars)."
+    )
+    chunk_overlap: int = Field(
+        default=200, ge=0, le=2000, description="Overlap between chunks (chars)."
+    )
+    segmentation_max_retries: int = Field(
+        default=3,
+        ge=0,
+        le=10,
+        description="Max LLM retries per chunk on malformed output.",
+    )
+    ollama_timeout_seconds: float = Field(
+        default=120.0,
+        gt=0,
+        description="HTTP timeout for a single Ollama generate call.",
+    )
+
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 

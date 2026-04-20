@@ -48,6 +48,21 @@ export const spans = sqliteTable(
   (table) => [index("idx_spans_document_offsets").on(table.documentId, table.start, table.end)],
 );
 
+export const segmentationJobs = sqliteTable(
+  "segmentation_jobs",
+  {
+    id: text("id").primaryKey(),
+    documentId: text("document_id").notNull().references(() => documents.id, { onDelete: "cascade" }),
+    status: text("status", { enum: ["pending", "running", "failed", "completed"] }).notNull().default("pending"),
+    chunkCount: integer("chunk_count").notNull().default(0),
+    modelName: text("model_name"),
+    stats: text("stats"), // JSON: retries per chunk, token counts, timings
+    errorReport: text("error_report"), // JSON: machine-readable validator report on failure
+    ...timestamps,
+  },
+  (table) => [index("idx_segmentation_jobs_document_status").on(table.documentId, table.status)],
+);
+
 export const attributions = sqliteTable(
   "attributions",
   {

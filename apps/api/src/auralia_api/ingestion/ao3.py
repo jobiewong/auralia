@@ -237,8 +237,6 @@ def _fetch_html(url: str) -> str:
     request = urllib.request.Request(
         url,
         headers={
-            # AO3 is behind Cloudflare, which rejects minimal/library User-Agents
-            # with HTTP 525. A standard browser-style header set gets through.
             "User-Agent": (
                 "Mozilla/5.0 (X11; Linux x86_64; rv:122.0) "
                 "Gecko/20100101 Firefox/122.0"
@@ -251,8 +249,6 @@ def _fetch_html(url: str) -> str:
 
     try:
         with urllib.request.urlopen(request, timeout=15) as response:
-            # AO3 redirects inaccessible chapters (archive-locked, registered-only,
-            # deleted) to the homepage. Detect and surface a specific error.
             final_path = urllib.parse.urlparse(response.geturl()).path
             if not final_path.startswith("/works/"):
                 raise AO3FetchError(
@@ -299,7 +295,6 @@ def fetch_ao3_chapter(url: str) -> AO3Chapter:
     if not cleaned:
         raise AO3ParseError("AO3 chapter body is empty after cleaning")
 
-    # AO3 often includes a generic in-body heading "Chapter Text".
     if cleaned.startswith("Chapter Text\n\n"):
         cleaned = cleaned[len("Chapter Text\n\n") :]
 

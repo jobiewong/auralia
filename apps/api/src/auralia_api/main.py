@@ -11,6 +11,13 @@ from auralia_api.ingestion.schemas import (
     IngestTextResponse,
 )
 from auralia_api.ingestion.service import ingest_ao3, ingest_text
+from auralia_api.segmentation.schemas import SegmentRequest, SegmentResponse
+from auralia_api.segmentation.service import (
+    AlreadySegmentedError,
+    DocumentNotFoundError,
+    SegmentationValidationError,
+    segment_document,
+)
 
 app = FastAPI(title="Auralia API", version="0.1.0")
 
@@ -56,6 +63,35 @@ def ingest_text_endpoint(req: IngestTextRequest) -> IngestTextResponse:
         ) from exc
 
     return IngestTextResponse.model_validate(result)
+
+
+@app.post(
+    "/api/segment",
+    response_model=SegmentResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def segment_endpoint(req: SegmentRequest) -> SegmentResponse:
+    settings = get_settings()
+    try:
+        result = segment_document(
+            document_id=req.document_id,
+            sqlite_path=settings.sqlite_path,
+        )
+    except DocumentNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except AlreadySegmentedError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except SegmentationValidationError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": "segmentation output failed validation",
+                "job_id": exc.job_id,
+                "report": exc.report,
+            },
+        ) from exc
+
+    return SegmentResponse.model_validate(result)
 
 
 @app.post(

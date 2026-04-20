@@ -14,7 +14,7 @@ Build a fully local, character-aware audiobook pipeline that converts prose into
 - **Frontend:** React with **TanStack Start** (file routes, SSR-capable dev/build) for the review + voice mapping UI
 - **Database:** SQLite (local, single-user) for structured state
 - **Schema control:** Drizzle ORM + migrations (TypeScript-first schema ownership)
-- **LLM Runtime:** Ollama + Qwen3 8B (segmentation + attribution)
+- **LLM Runtime:** Ollama + Qwen3 8B (attribution only — segmentation is deterministic)
 - **TTS:** VoxCPM
 - **Assembly:** FFmpeg
 - **Binary assets:** local filesystem for audio files
@@ -143,40 +143,45 @@ Build a fully local, character-aware audiobook pipeline that converts prose into
 
 ---
 
-## M3 — Segmentation Pass (LLM) + Chunk Merge
+## M3 — Segmentation Pass (Deterministic) + Quote-Based Splitter
 
-**Objective:** Segment long texts reliably with global offset integrity.
+**Objective:** Split cleaned prose into narration/dialogue spans with exact offsets for downstream stages.
 
-**Status:** ⬜ Not started
+**Status:** ✅ Completed
+
+**Approach change (2026-04-20):** Replaced the planned LLM-based segmentation with a deterministic quote-pairing splitter. Early testing of `qwen3:8b` (and earlier `qwen2.5:7b`) on the offset-emission task produced degenerate alternating-number patterns that broke text mid-word and mislabeled narration vs dialogue, even with `format: "json"` and temperature 0. Since the ingestion pipeline already normalizes every curly/angle double quote to ASCII `"`, a pair-based splitter gives near-perfect labels for standard English prose at zero LLM cost — aligned with PLAN.md's guidance to "use LLM calls only for semantic tasks". LLM work is now concentrated in M4 (attribution), where offsets are not required from the model.
 
 **Tasks**
-- [ ] Implement chunking strategy (window + overlap)
-- [ ] Implement segmentation prompt call via Ollama (default model: `qwen3:8b`)
-- [ ] Parse + validate JSON response
-- [ ] Convert chunk-local offsets to global offsets
-- [ ] Deterministic overlap reconciliation/merge
-- [ ] Run full-document validators post-merge
-- [ ] Add retry policy for malformed LLM output
-- [ ] Add tests for chunk boundary edge cases
+- [x] Implement deterministic quote-pair splitter (`segmentation/quote_segmenter.py`)
+- [x] Integrate existing validators (contiguity, non-overlap, coverage, reconstruction, offset-text consistency)
+- [x] Persist spans + `segmentation_jobs` row (with `stats.method` tag)
+- [x] Handle edge cases: narration-only, unmatched quotes, adjacent dialogues, multi-line dialogue, empty `""`
+- [x] Expose `/api/segment` endpoint (no LLM dependency)
+- [x] Add unit tests for segmenter invariants + API behavior
 
 **Definition of Done**
-- Long chapters produce contiguous validated spans persisted in SQLite.
+- AO3-normalized chapters produce contiguous validated spans persisted in SQLite with correct narration/dialogue labels and zero LLM calls.
 
-**Benchmark plan (model validation on RTX 3080, 10–12GB VRAM)**
-- [ ] Build a fixed eval set: 20 chapter excerpts (mix of heavy dialogue, nested quotes, and narration-heavy prose)
-- [ ] Run baseline (`qwen2.5:7b-instruct-q4_K_M`) and candidate (`qwen3:8b`) with identical prompts/temperature
-- [ ] Track deterministic metrics per run:
-  - [ ] JSON parse success rate
-  - [ ] Contiguity/non-overlap/coverage pass rate
-  - [ ] Reconstruction exact-match rate
-  - [ ] Mean latency (sec / 1k chars)
-- [ ] Track sampled quality metrics:
-  - [ ] Segmentation label agreement against human labels (narration vs dialogue)
-  - [ ] Attribution accuracy / F1 on dialogue spans
-- [ ] Promotion gate for default model:
-  - [ ] `qwen3:8b` has equal-or-better deterministic pass rate than baseline
-  - [ ] `qwen3:8b` improves sampled quality metrics
-  - [ ] Runtime remains acceptable for local sequential pipeline
+**Delivered**
+- `apps/api/src/auralia_api/segmentation/quote_segmenter.py` — O(n) pure-Python splitter
+- `apps/api/src/auralia_api/segmentation/service.py` — orchestration + persistence
+- `apps/api/src/auralia_api/segmentation/storage.py` — SQLite bootstrap mirroring Drizzle
+- `apps/api/src/auralia_api/segmentation/ollama_client.py` — retained unchanged for reuse by M4
+- `packages/db/drizzle/migrations/0003_m3_segmentation_jobs.sql` — `segmentation_jobs` table
+- `POST /api/segment` endpoint (document_id → spans + job record)
+- Tests: `tests/segmentation/test_quote_segmenter.py`, `tests/segmentation/test_segmentation_api.py`, `tests/segmentation/test_ollama_client.py`
+
+**Known limitations (candidates for M8 hardening or a follow-up milestone)**
+- British-style single-quote (`'...'`) dialogue is not detected; it conflicts with apostrophes/possessives, so only ASCII double quotes are treated as dialogue delimiters.
+- Nested double quotes (e.g. `"He said "wait!" slowly."`) mis-pair, producing a spurious narration segment inside what is semantically one speech act. Rare in standard AO3 prose.
+- A truly unmatched opening `"` yields a single narration span to EOF — safe default, but worth surfacing in observability when M8 lands.
+- No speaker attribution yet — that's M4's job.
+
+**Previously planned, not pursued**
+- Chunking (window + overlap) — not needed; the splitter is O(n) with no context window.
+- Ollama segmentation prompt + JSON validation + retry policy — removed. `ollama_client.py` kept for M4.
+- Overlap reconciliation/merge logic — not needed without chunking.
+- Segmentation-model benchmark plan (`qwen2.5:7b` vs `qwen3:8b`) — superseded. Benchmarking moves to M4, where the LLM still owns the task.
 
 ---
 
@@ -327,22 +332,21 @@ At end of each session, update:
 
 - **Last updated:** 2026-04-20
 - **Completed in this session:**
-  - [x] Fixed AO3 HTTP 525 by switching to a browser-shaped User-Agent + `Accept-*` headers
-  - [x] Extended AO3 parser to extract work title, authors (with absolute profile URLs), and prev/next chapter URLs
-  - [x] Added `documents.source_metadata` JSON column (Drizzle migration `0001_m2_documents_source_metadata.sql`) to hold source-specific metadata
-  - [x] Populated AO3 `source_metadata` with work_id/work_title/authors/chapter_id/chapter_title/prev+next chapter URLs
-  - [x] Added redirect-to-homepage detection for restricted/locked AO3 works
-  - [x] Normalized curly quotes, ellipses, and em/en dashes to ASCII in the cleaning pipeline
-  - [x] Promoted `ingestion_jobs` from Python-only bootstrap to Drizzle (migration `0002_m2_ingestion_jobs.sql`); Python `storage.py` now mirrors Drizzle as dev-convenience bootstrap only
-  - [x] Wrote `docs/ao3_ingestion.md` (parsing selectors, Cloudflare mitigation, rate/size limits, `source_metadata` shape, ranked future upgrades)
-  - [x] Full Python suite green (`pytest tests/ -q`: 39 passed)
-- **M2 status:** ✅ complete
-- **Next immediate task:** begin M3 segmentation pass scaffolding (chunking + prompt call + response validation loop)
+  - [x] Diagnosed `/api/segment` quality failure: `qwen3:8b` on offset-emission produced degenerate alternating-number patterns (mid-word cuts, swapped labels) even with `format: "json"` + temperature 0. Root cause: asking a quantized 7B–8B model to emit precise character offsets over multi-thousand-char input is near-impossible.
+  - [x] Replaced LLM Pass 1 with a deterministic quote-pair splitter (`segmentation/quote_segmenter.py`, ~50 LOC, O(n)).
+  - [x] Rewrote `segmentation/service.py` to drive the deterministic path, preserving validators + persistence; dropped `SegmentationConfig` and `OllamaUnavailableError`.
+  - [x] Simplified `/api/segment` wiring in `main.py` (no LLM config, no 502 branch).
+  - [x] Updated `segmentation_model` default from `qwen2.5:7b` → `qwen3:8b` (config.py).
+  - [x] Deleted now-unused Pass-1 modules: `chunker.py`, `merger.py`, `parser.py`, `prompts.py` and their tests. Kept `ollama_client.py` for M4 reuse.
+  - [x] Added `tests/segmentation/test_quote_segmenter.py` (11 unit tests) and rewrote `test_segmentation_api.py` for deterministic behavior.
+  - [x] Full Python suite green (`pytest tests/ -q`: 59 passed). `mypy` clean on modified modules; `ruff` clean on the diff.
+- **M3 status:** ✅ complete (via deterministic quote-pair splitter, not LLM)
+- **Next immediate task:** begin M4 attribution scaffolding — design speaker-assignment prompt for dialogue spans with confidence + `UNKNOWN` fallback; reuse `ollama_client.py`.
 - **Blockers:** none.
 - **Resume commands:**
   - `cd ~/repos/auralia`
   - `git pull`
-  - `pytest tests/ingestion -q`
+  - `pytest tests/segmentation -q`
   - `pytest tests/ -q`
   - `npm run dev` (on a machine with npm available)
 
@@ -353,7 +357,7 @@ At end of each session, update:
 - M0 Repo & Tooling Skeleton: ✅
 - M1 Contracts + Validators: ✅
 - M2 Ingestion & Cleaning: ✅
-- M3 Segmentation + Chunk Merge: ⬜
+- M3 Segmentation (deterministic quote splitter): ✅
 - M4 Attribution + Review Flags: ⬜
 - M5 Voice Registry API + Voice Management: ⬜
 - M6 React Review + Speaker Corrections: ⬜
