@@ -31,7 +31,19 @@ Rules:
    }
 """
 
-def build_roster_user_prompt(document_text: str) -> str:
+def build_roster_user_prompt(
+    document_text: str,
+    *,
+    retry_feedback: str | None = None,
+) -> str:
+    if retry_feedback:
+        return (
+            f"DOCUMENT_TEXT:\n{document_text}\n\n"
+            f"RETRY_NOTE: {retry_feedback}\n\n"
+            "Return JSON only with the exact shape "
+            '{"characters": [{"canonical_name": str, "aliases": [str], '
+            '"descriptor": str}]}.'
+        )
     return f"DOCUMENT_TEXT:\n{document_text}\n\nReturn JSON only."
 
 
@@ -41,6 +53,7 @@ def build_window_user_prompt(
     pre_context_text: str,
     blocks: list[dict[str, Any]],
     post_context_text: str,
+    retry_feedback: str | None = None,
 ) -> str:
     lines: list[str] = []
     lines.append("ROSTER:")
@@ -75,5 +88,8 @@ def build_window_user_prompt(
     lines.append(post_context_text)
     lines.append("")
     lines.append("Return an attributions array with one entry per dialogue id above.")
+    if retry_feedback:
+        lines.append("")
+        lines.append(f"RETRY_NOTE: {retry_feedback}")
 
     return "\n".join(lines)

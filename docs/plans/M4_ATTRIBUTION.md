@@ -4,6 +4,25 @@
 
 ---
 
+## Implementation Status (last updated 2026-04-20)
+
+**Status:** 🟨 Nearly complete. Pipeline (Stages A–D), validators, API, and test coverage are all delivered and green. Outstanding work is evaluation-only: the hand-labeled benchmark fixture set and the live Qwen3 8B smoke run.
+
+**Delivered**
+- `apps/api/src/auralia_api/attribution/` — `__init__.py`, `prompts.py`, `roster.py`, `pre_pass.py`, `windower.py`, `parser.py`, `validators.py`, `service.py`, `storage.py`, `schemas.py`
+- Drizzle migration `0004_m4_attribution_jobs.sql` + Python bootstrap mirror
+- `POST /api/attribute` endpoint with 404/409/422/502 error mappings
+- Config additions in `auralia_api.config`: `attribution_model`, `attribution_confidence_threshold`, `attribution_max_window_dialogues`, `attribution_max_window_chars`, `attribution_max_gap_chars`, `attribution_max_retries`
+- Tests under `tests/attribution/` (44 passing): `test_pre_pass.py`, `test_windower.py`, `test_parser.py`, `test_prompts.py`, `test_roster.py`, `test_validators.py`, `test_service.py`, `test_attribution_storage.py`, `test_attribution_api.py`
+- Repo-wide checks green: `pytest tests/ -q` → 103 passed; `ruff check apps/api/src tests` clean; `mypy apps/api/src/auralia_api` clean
+
+**Outstanding**
+- Benchmark fixture set (20 hand-labeled chapter excerpts covering alternation, pronoun tags, group speech, split dialogue, nested quotes) under `tests/attribution/fixtures/eval_set/`
+- `tests/attribution/test_benchmark.py` — opt-in gated test that reports accuracy / F1 / `UNKNOWN` rate / deterministic pre-pass hit rate / sec-per-1k-chars
+- End-to-end smoke test against a live Qwen3 8B Ollama instance; iterate on prompts and confidence threshold if measured accuracy is weak
+
+---
+
 ## Goal
 
 Given a document with validated narration/dialogue spans from M3, produce exactly one attribution row per dialogue span with:

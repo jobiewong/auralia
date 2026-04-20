@@ -185,23 +185,37 @@ Build a fully local, character-aware audiobook pipeline that converts prose into
 
 ---
 
-## M4 — Attribution Pass (LLM) + Review Flags
+## M4 — Attribution Pass (LLM + Deterministic Pre-Pass) + Review Flags
 
 **Objective:** Attribute speakers for dialogue spans and flag uncertain outputs.
 
-**Status:** ⬜ Not started
+**Status:** 🟨 Nearly complete — authoritative spec lives in `docs/plans/M4_ATTRIBUTION.md`.
 
 **Tasks**
-- [ ] Implement attribution prompt flow
-- [ ] Restrict outputs to one item per dialogue span id
-- [ ] Enforce fallback: `speaker="UNKNOWN"`, `needs_review=true` when uncertain
-- [ ] Add confidence threshold logic for review flagging
-- [ ] Merge attribution results back into full span set
-- [ ] Validate attribution schema + constraints
-- [ ] Add tests for pronouns/multi-speaker ambiguity
+- [x] Character roster extraction (LLM pass A)
+- [x] Deterministic tag pre-pass for obvious `X said` patterns (closed verb list, roster-gated)
+- [x] Conversation-window batching for the LLM attribution pass (locked context preserves alternation anchors)
+- [x] Attribution prompt + parser for roster and windowed output
+- [x] Cross-stage attribution validators (one-per-span, roster-bound, `UNKNOWN` → review, confidence threshold)
+- [x] Persist `attribution_jobs` + `attributions` rows with merged stats
+- [x] `POST /api/attribute` endpoint with 404/409/422/502 error mappings
+- [x] Unit + fake-LLM integration tests across modules (46 passing)
+- [x] Robustness hardening against real LLM drift (tolerant parsers, retry-with-feedback, raw-response surfacing)
+- [x] Live smoke run against real Qwen3 8B — endpoint returns attributions end-to-end
+- [ ] Benchmark fixture set (20 hand-labeled excerpts) + opt-in benchmark test
+- [ ] Prompt/threshold tuning based on measured accuracy
 
 **Definition of Done**
 - Attribution results are persisted with deterministic checks and review flags.
+- Full spec in `docs/plans/M4_ATTRIBUTION.md` remains authoritative for the pipeline.
+
+**Delivered**
+- `apps/api/src/auralia_api/attribution/` — `prompts.py`, `roster.py`, `pre_pass.py`, `windower.py`, `parser.py`, `validators.py`, `service.py`, `storage.py`, `schemas.py`
+- Drizzle migration `0004_m4_attribution_jobs.sql` + Python bootstrap mirror in `attribution/storage.py`
+- `POST /api/attribute` endpoint in `main.py`
+- Config additions (`auralia_api.config`): `attribution_model`, `attribution_confidence_threshold`, `attribution_max_window_dialogues`, `attribution_max_window_chars`, `attribution_max_gap_chars`, `attribution_max_retries`
+- Tests under `tests/attribution/`:
+  - `test_pre_pass.py`, `test_windower.py`, `test_parser.py`, `test_prompts.py`, `test_roster.py`, `test_validators.py`, `test_service.py`, `test_attribution_storage.py`, `test_attribution_api.py`
 
 ---
 
@@ -332,23 +346,29 @@ At end of each session, update:
 
 - **Last updated:** 2026-04-20
 - **Completed in this session:**
-  - [x] Diagnosed `/api/segment` quality failure: `qwen3:8b` on offset-emission produced degenerate alternating-number patterns (mid-word cuts, swapped labels) even with `format: "json"` + temperature 0. Root cause: asking a quantized 7B–8B model to emit precise character offsets over multi-thousand-char input is near-impossible.
-  - [x] Replaced LLM Pass 1 with a deterministic quote-pair splitter (`segmentation/quote_segmenter.py`, ~50 LOC, O(n)).
-  - [x] Rewrote `segmentation/service.py` to drive the deterministic path, preserving validators + persistence; dropped `SegmentationConfig` and `OllamaUnavailableError`.
-  - [x] Simplified `/api/segment` wiring in `main.py` (no LLM config, no 502 branch).
-  - [x] Updated `segmentation_model` default from `qwen2.5:7b` → `qwen3:8b` (config.py).
-  - [x] Deleted now-unused Pass-1 modules: `chunker.py`, `merger.py`, `parser.py`, `prompts.py` and their tests. Kept `ollama_client.py` for M4 reuse.
-  - [x] Added `tests/segmentation/test_quote_segmenter.py` (11 unit tests) and rewrote `test_segmentation_api.py` for deterministic behavior.
-  - [x] Full Python suite green (`pytest tests/ -q`: 59 passed). `mypy` clean on modified modules; `ruff` clean on the diff.
-- **M3 status:** ✅ complete (via deterministic quote-pair splitter, not LLM)
-- **Next immediate task:** begin M4 attribution scaffolding — design speaker-assignment prompt for dialogue spans with confidence + `UNKNOWN` fallback; reuse `ollama_client.py`.
+  - [x] Delivered the full M4 attribution pipeline per `docs/plans/M4_ATTRIBUTION.md`: roster extraction (LLM), deterministic `X said`/`said X` pre-pass (closed verb list, roster-gated), conversation-window batching with locked anchors for alternation inference, cross-stage validators, persistence.
+  - [x] Added Drizzle migration `0004_m4_attribution_jobs.sql` plus Python bootstrap mirror in `attribution/storage.py`.
+  - [x] Wired `POST /api/attribute` in `main.py` with 404/409/422/502 error mappings.
+  - [x] Added attribution config fields (`attribution_model`, confidence threshold, window/gap sizing, retry cap) to `config.py`.
+  - [x] Cleaned the segmentation test invariant helper: swapped `zip(..., strict=False)` for `itertools.pairwise`.
+  - [x] Fixed two mypy errors in `ingestion/ao3.py` (guard `get_starttag_text()` None case; annotate `payload: bytes`).
+  - [x] Hardened attribution against real-LLM drift after two production 422s against Qwen3 8B:
+    - Roster parser accepts `characters` / `roster` / `character` / `cast` keys and bare top-level arrays.
+    - Window parser maps aliases → canonical, does case-insensitive canonical/alias matching, and coerces truly-unknown speakers to `UNKNOWN` (conf=0, flows through `needs_review`) instead of hard-failing.
+    - Both roster and window retry loops now feed the previous error + raw-response snippet back into the next prompt so the model can self-correct.
+    - `AttributionParseError` carries a `raw_response` attribute; failed-job `error_report` includes a `raw_response_snippet` for diagnosis without reproduction.
+    - Removed stray `print(roster)` debug statement.
+  - [x] End-to-end smoke run against real Qwen3 8B succeeded — `POST /api/attribute` returns attributions and persists rows to `attributions` + `attribution_jobs`.
+  - [x] Full Python suite green (`pytest tests/ -q`: 105 passed). `ruff check apps/api/src tests` clean. `mypy apps/api/src/auralia_api` clean (0 errors across 28 files).
+- **M4 status:** 🟨 nearly complete — pipeline, validators, API, tests, and live-LLM robustness all delivered. Benchmark fixture set + measured accuracy tuning still outstanding.
+- **Next immediate task:** build the hand-labeled benchmark fixture set (20 chapter excerpts covering alternation, pronoun tags, group speech, split dialogue) and wire `tests/attribution/test_benchmark.py` as an opt-in gated test. Use the resulting accuracy numbers to decide whether the prompts/thresholds need further tuning before moving to M5.
 - **Blockers:** none.
 - **Resume commands:**
   - `cd ~/repos/auralia`
   - `git pull`
-  - `pytest tests/segmentation -q`
+  - `pytest tests/attribution -q`
   - `pytest tests/ -q`
-  - `npm run dev` (on a machine with npm available)
+  - `ruff check apps/api/src tests && mypy apps/api/src/auralia_api`
 
 ---
 
@@ -358,7 +378,7 @@ At end of each session, update:
 - M1 Contracts + Validators: ✅
 - M2 Ingestion & Cleaning: ✅
 - M3 Segmentation (deterministic quote splitter): ✅
-- M4 Attribution + Review Flags: ⬜
+- M4 Attribution + Review Flags: 🟨 (pipeline delivered; benchmark + live smoke run outstanding)
 - M5 Voice Registry API + Voice Management: ⬜
 - M6 React Review + Speaker Corrections: ⬜
 - M7 Synthesis + Assembly: ⬜

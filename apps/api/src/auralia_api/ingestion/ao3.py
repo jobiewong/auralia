@@ -104,7 +104,9 @@ class _AO3ChapterParser(HTMLParser):
                 self._target_depth = self._depth
 
         if self._target_depth is not None and self._depth >= self._target_depth:
-            self._body_chunks.append(self.get_starttag_text())
+            starttag_text = self.get_starttag_text()
+            if starttag_text is not None:
+                self._body_chunks.append(starttag_text)
 
         # --- Work title (h2.title.heading, outside #chapters) ---
         if (
@@ -261,7 +263,7 @@ def _fetch_html(url: str) -> str:
             if "html" not in content_type.lower():
                 raise AO3FetchError("AO3 response is not HTML")
 
-            payload = response.read(_MAX_HTML_BYTES + 1)
+            payload: bytes = response.read(_MAX_HTML_BYTES + 1)
             if len(payload) > _MAX_HTML_BYTES:
                 raise AO3FetchError("AO3 response too large")
 

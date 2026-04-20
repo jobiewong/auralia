@@ -224,6 +224,23 @@ def attribute_document(
             error_report={"message": "ollama unavailable"},
         )
         raise
+    except AttributionParseError as exc:
+        report = {
+            "message": str(exc),
+            "type": type(exc).__name__,
+        }
+        if exc.raw_response is not None:
+            report["raw_response_snippet"] = exc.raw_response[:1000]
+        insert_attribution_job(
+            sqlite_path=sqlite_path,
+            job_id=job_id,
+            document_id=document["id"],
+            status="failed",
+            model_name=model_name,
+            stats=None,
+            error_report=report,
+        )
+        raise AttributionValidationError(report=report, job_id=job_id) from exc
     except Exception as exc:
         report = {"message": str(exc), "type": type(exc).__name__}
         insert_attribution_job(
@@ -254,9 +271,22 @@ def _attribute_window_with_retries(
         if b.get("type") == "dialogue" and b.get("locked")
     }
     roster_names = {str(c["canonical_name"]) for c in roster}
+    alias_to_canonical: dict[str, str] = {}
+    for character in roster:
+        canonical = str(character["canonical_name"])
+        for alias in character.get("aliases") or []:
+            alias_to_canonical[str(alias)] = canonical
 
-    last_error: Exception | None = None
+    last_error: AttributionParseError | None = None
+    last_raw: str | None = None
     for attempt in range(max_retries + 1):
+        retry_feedback: str | None = None
+        if last_error is not None:
+            snippet = (last_raw or "")[:400]
+            retry_feedback = (
+                f"Previous attempt failed: {last_error}. "
+                f"Previous output (truncated): {snippet}"
+            )
         try:
             resp = generate_json(
                 base_url=base_url,
@@ -267,14 +297,17 @@ def _attribute_window_with_retries(
                     pre_context_text=window.get("pre_context", ""),
                     blocks=window["blocks"],
                     post_context_text=window.get("post_context", ""),
+                    retry_feedback=retry_feedback,
                 ),
                 timeout_seconds=timeout_seconds,
             )
+            last_raw = resp.raw_text
             rows = parse_window_attributions(
                 resp.raw_text,
                 dialogue_ids=dialogue_ids,
                 locked_speakers=locked_speakers,
                 roster_names=roster_names,
+                alias_to_canonical=alias_to_canonical,
             )
             return rows, {
                 "prompt_eval_count": resp.prompt_eval_count,
@@ -282,9 +315,13 @@ def _attribute_window_with_retries(
             }
         except AttributionParseError as exc:
             last_error = exc
+            if exc.raw_response is not None:
+                last_raw = exc.raw_response
             if attempt >= max_retries:
                 break
     assert last_error is not None
+    if last_error.raw_response is None and last_raw is not None:
+        last_error.raw_response = last_raw
     raise last_error
 
 

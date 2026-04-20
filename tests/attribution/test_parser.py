@@ -88,16 +88,46 @@ def test_parse_window_attributions_rejects_locked_speaker_changes():
         )
 
 
-def test_parse_window_attributions_rejects_unknown_speaker():
+def test_parse_window_attributions_coerces_unknown_speaker_to_unknown():
     raw = '{"attributions":[{"id":"d1","speaker":"Dobby","speaker_confidence":0.8}]}'
 
-    with pytest.raises(AttributionParseError, match="speaker"):
-        parse_window_attributions(
-            raw,
-            dialogue_ids=["d1"],
-            locked_speakers={},
-            roster_names={"Harry", "Ron"},
-        )
+    rows = parse_window_attributions(
+        raw,
+        dialogue_ids=["d1"],
+        locked_speakers={},
+        roster_names={"Harry", "Ron"},
+    )
+
+    assert rows[0]["speaker"] == "UNKNOWN"
+    assert rows[0]["speaker_confidence"] == 0.0
+
+
+def test_parse_window_attributions_maps_aliases_to_canonical():
+    raw = '{"attributions":[{"id":"d1","speaker":"Potter","speaker_confidence":0.9}]}'
+
+    rows = parse_window_attributions(
+        raw,
+        dialogue_ids=["d1"],
+        locked_speakers={},
+        roster_names={"Harry"},
+        alias_to_canonical={"Potter": "Harry"},
+    )
+
+    assert rows[0]["speaker"] == "Harry"
+    assert rows[0]["speaker_confidence"] == 0.9
+
+
+def test_parse_window_attributions_case_insensitive_speaker_match():
+    raw = '{"attributions":[{"id":"d1","speaker":"harry","speaker_confidence":0.9}]}'
+
+    rows = parse_window_attributions(
+        raw,
+        dialogue_ids=["d1"],
+        locked_speakers={},
+        roster_names={"Harry"},
+    )
+
+    assert rows[0]["speaker"] == "Harry"
 
 
 def test_parse_window_attributions_rejects_confidence_out_of_range():
