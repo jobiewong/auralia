@@ -64,7 +64,7 @@ def test_parse_window_attributions_accepts_valid_payload_with_locked():
     assert rows[1]["speaker_confidence"] == 0.76
 
 
-def test_parse_window_attributions_rejects_missing_or_extra_ids():
+def test_parse_window_attributions_rejects_missing_ids():
     raw = '{"attributions":[{"id":"d1","speaker":"Harry","speaker_confidence":1.0}]}'
 
     with pytest.raises(AttributionParseError, match="missing ids"):
@@ -74,6 +74,24 @@ def test_parse_window_attributions_rejects_missing_or_extra_ids():
             locked_speakers={},
             roster_names={"Harry"},
         )
+
+
+def test_parse_window_attributions_drops_extra_ids_silently():
+    raw = (
+        '{"attributions":['
+        '{"id":"d1","speaker":"Harry","speaker_confidence":1.0},'
+        '{"id":"narr_99","speaker":"UNKNOWN","speaker_confidence":0.0}'
+        "]}"
+    )
+
+    rows = parse_window_attributions(
+        raw,
+        dialogue_ids=["d1"],
+        locked_speakers={},
+        roster_names={"Harry"},
+    )
+
+    assert [r["id"] for r in rows] == ["d1"]
 
 
 def test_parse_window_attributions_rejects_locked_speaker_changes():

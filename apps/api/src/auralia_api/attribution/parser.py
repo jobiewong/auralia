@@ -142,15 +142,9 @@ def parse_window_attributions(
     expected = set(dialogue_ids)
     actual = set(by_id.keys())
     missing = sorted(expected - actual)
-    extra = sorted(actual - expected)
     if missing:
         raise AttributionParseError(
             f"missing ids in attribution payload: {missing}",
-            raw_response=raw_text,
-        )
-    if extra:
-        raise AttributionParseError(
-            f"extra ids in attribution payload: {extra}",
             raw_response=raw_text,
         )
 
