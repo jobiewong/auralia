@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS spans (
   FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE,
   CHECK (type IN ('narration', 'dialogue'))
 );
-CREATE INDEX IF NOT EXISTS idx_spans_document_offsets ON spans (document_id, start, end);
+CREATE INDEX IF NOT EXISTS idx_spans_document_offsets
+  ON spans (document_id, start, end);
 
 CREATE TABLE IF NOT EXISTS segmentation_jobs (
   id TEXT PRIMARY KEY NOT NULL,

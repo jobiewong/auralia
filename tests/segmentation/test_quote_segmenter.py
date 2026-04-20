@@ -14,7 +14,7 @@ def _assert_invariants(text: str, intervals: list[SpanInterval]) -> None:
         return
     assert intervals[0].start == 0
     assert intervals[-1].end == len(text)
-    for prev, curr in zip(intervals, intervals[1:], strict=True):
+    for prev, curr in zip(intervals, intervals[1:], strict=False):
         assert prev.end == curr.start
     assert _reconstruct(text, intervals) == text
     for iv in intervals:

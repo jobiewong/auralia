@@ -56,6 +56,16 @@ class Settings(BaseSettings):
         description="HTTP timeout for a single Ollama generate call.",
     )
 
+    attribution_model: str = Field(
+        default="qwen3:8b",
+        description="Ollama model tag used for speaker attribution.",
+    )
+    attribution_confidence_threshold: float = Field(default=0.7, ge=0.0, le=1.0)
+    attribution_max_window_dialogues: int = Field(default=12, ge=1, le=50)
+    attribution_max_window_chars: int = Field(default=6000, ge=1000, le=20000)
+    attribution_max_gap_chars: int = Field(default=400, ge=0, le=5000)
+    attribution_max_retries: int = Field(default=3, ge=0, le=10)
+
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 

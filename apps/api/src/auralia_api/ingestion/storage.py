@@ -32,7 +32,8 @@ CREATE TABLE IF NOT EXISTS ingestion_jobs (
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY(document_id) REFERENCES documents(id) ON DELETE SET NULL
 );
-CREATE INDEX IF NOT EXISTS idx_ingestion_jobs_document_id ON ingestion_jobs (document_id);
+CREATE INDEX IF NOT EXISTS idx_ingestion_jobs_document_id
+  ON ingestion_jobs (document_id);
 CREATE INDEX IF NOT EXISTS idx_ingestion_jobs_status ON ingestion_jobs (status);
 """
 

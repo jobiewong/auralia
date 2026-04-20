@@ -56,7 +56,9 @@ class _TextExtractor(HTMLParser):
         super().__init__(convert_charrefs=False)
         self._chunks: list[str] = []
 
-    def handle_starttag(self, tag: str, attrs) -> None:  # type: ignore[override]
+    def handle_starttag(
+        self, tag: str, attrs: list[tuple[str, str | None]]
+    ) -> None:
         if tag.lower() in _BLOCK_TAGS:
             self._chunks.append("\n")
 

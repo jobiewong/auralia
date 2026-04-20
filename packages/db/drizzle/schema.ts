@@ -76,6 +76,20 @@ export const attributions = sqliteTable(
   (table) => [index("idx_attributions_span_id").on(table.spanId)],
 );
 
+export const attributionJobs = sqliteTable(
+  "attribution_jobs",
+  {
+    id: text("id").primaryKey(),
+    documentId: text("document_id").notNull().references(() => documents.id, { onDelete: "cascade" }),
+    status: text("status", { enum: ["pending", "running", "failed", "completed"] }).notNull().default("pending"),
+    modelName: text("model_name"),
+    stats: text("stats"), // JSON: roster size, timings, deterministic/llm counts
+    errorReport: text("error_report"), // JSON: machine-readable validator report on failure
+    ...timestamps,
+  },
+  (table) => [index("idx_attribution_jobs_document_status").on(table.documentId, table.status)],
+);
+
 export const voices = sqliteTable("voices", {
   id: text("id").primaryKey(),
   displayName: text("display_name").notNull(),
