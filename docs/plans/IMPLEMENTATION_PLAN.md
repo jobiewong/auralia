@@ -275,6 +275,8 @@ Build a fully local, character-aware audiobook pipeline that converts prose into
 
 ## Backlog (Post-MVP)
 
+- [ ] Stretch milestone: automatically download required local models on startup when missing (with explicit opt-in and progress reporting)
+- [ ] Stretch milestone: optionally auto-start local model runtimes on app startup (health-check gated, with timeout/fallback)
 - [ ] Multi-voice style presets per project
 - [ ] Pronunciation dictionary per character
 - [ ] Emotion/prosody controls
