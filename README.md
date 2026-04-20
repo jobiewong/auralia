@@ -110,7 +110,7 @@ Ensure your root `.env` (see `.env.example`) lists the web origin in `AURALIA_CO
    - Remove HTML/tags and normalise whitespace
 
 2. **Segmentation (LLM Pass 1)**
-   - Use Ollama + Qwen 2.5 7B to split text into ordered spans
+   - Use Ollama + Qwen3 8B to split text into ordered spans
    - Label spans as `narration` or `dialogue`
    - Track exact `start`/`end` offsets
 
@@ -131,7 +131,7 @@ Ensure your root `.env` (see `.env.example`) lists the web origin in `AURALIA_CO
 
 ## Model & Tools
 
-- **Segmentation + attribution:** Ollama (Qwen 2.5 7B, Q4KM)
+- **Segmentation + attribution:** Ollama (Qwen3 8B, Q4_K_M)
 - **TTS synthesis:** VoxCPM
 - **Audio assembly:** FFmpeg
 - **Validation layer:** deterministic hard-coded checks in backend
@@ -208,7 +208,7 @@ Optimised for:
 
 Operational assumptions:
 
-- Run Qwen 2.5 7B in Q4KM to keep VRAM usage manageable
+- Run Qwen3 8B in Q4_K_M to keep VRAM usage manageable
 - Run segmentation and synthesis sequentially to avoid OOM
 - Use CPU offloading where needed during synthesis
 

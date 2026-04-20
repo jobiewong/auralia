@@ -14,7 +14,7 @@ Build a fully local, character-aware audiobook pipeline that converts prose into
 - **Frontend:** React with **TanStack Start** (file routes, SSR-capable dev/build) for the review + voice mapping UI
 - **Database:** SQLite (local, single-user) for structured state
 - **Schema control:** Drizzle ORM + migrations (TypeScript-first schema ownership)
-- **LLM Runtime:** Ollama + Qwen 2.5 7B (segmentation + attribution)
+- **LLM Runtime:** Ollama + Qwen3 8B (segmentation + attribution)
 - **TTS:** VoxCPM
 - **Assembly:** FFmpeg
 - **Binary assets:** local filesystem for audio files
@@ -151,7 +151,7 @@ Build a fully local, character-aware audiobook pipeline that converts prose into
 
 **Tasks**
 - [ ] Implement chunking strategy (window + overlap)
-- [ ] Implement segmentation prompt call via Ollama
+- [ ] Implement segmentation prompt call via Ollama (default model: `qwen3:8b`)
 - [ ] Parse + validate JSON response
 - [ ] Convert chunk-local offsets to global offsets
 - [ ] Deterministic overlap reconciliation/merge
@@ -161,6 +161,22 @@ Build a fully local, character-aware audiobook pipeline that converts prose into
 
 **Definition of Done**
 - Long chapters produce contiguous validated spans persisted in SQLite.
+
+**Benchmark plan (model validation on RTX 3080, 10–12GB VRAM)**
+- [ ] Build a fixed eval set: 20 chapter excerpts (mix of heavy dialogue, nested quotes, and narration-heavy prose)
+- [ ] Run baseline (`qwen2.5:7b-instruct-q4_K_M`) and candidate (`qwen3:8b`) with identical prompts/temperature
+- [ ] Track deterministic metrics per run:
+  - [ ] JSON parse success rate
+  - [ ] Contiguity/non-overlap/coverage pass rate
+  - [ ] Reconstruction exact-match rate
+  - [ ] Mean latency (sec / 1k chars)
+- [ ] Track sampled quality metrics:
+  - [ ] Segmentation label agreement against human labels (narration vs dialogue)
+  - [ ] Attribution accuracy / F1 on dialogue spans
+- [ ] Promotion gate for default model:
+  - [ ] `qwen3:8b` has equal-or-better deterministic pass rate than baseline
+  - [ ] `qwen3:8b` improves sampled quality metrics
+  - [ ] Runtime remains acceptable for local sequential pipeline
 
 ---
 

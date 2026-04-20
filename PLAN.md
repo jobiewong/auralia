@@ -14,8 +14,8 @@ Building a local pipeline to turn prose (AO3/text files) into voice-cast audiobo
 
 ## Tech Stack
 
-- **Segmentation model:** Ollama running Qwen 2.5 7B — used to split and tag text spans
-- **Attribution model:** Ollama running Qwen 2.5 7B (separate pass) — used to assign speakers to dialogue spans
+- **Segmentation model:** Ollama running Qwen3 8B — used to split and tag text spans
+- **Attribution model:** Ollama running Qwen3 8B (separate pass) — used to assign speakers to dialogue spans
 - **TTS synthesis:** VoxCPM — handles voice-cast audio generation per character
 - **Assembly:** FFmpeg — concatenates audio segments into final audiobook output
 - **Validation layer:** hard-coded deterministic validators in backend (offset/overlap/coverage/schema checks)
@@ -240,7 +240,7 @@ For long chapters exceeding context limits:
 
 Optimising for a machine with **32 GB RAM** and an **RTX 3080 (10–12 GB VRAM)**:
 
-- Run Qwen 2.5 7B at **Q4KM quantization** via Ollama to keep VRAM usage under 6 GB, leaving headroom for VoxCPM synthesis
+- Run Qwen3 8B at **Q4_K_M quantization** via Ollama (~5.2 GB model blob) to keep VRAM usage manageable and leave headroom for VoxCPM synthesis
 - Process segmentation and synthesis sequentially (not concurrently) to avoid OOM errors
 - Use CPU offloading for embedding layers if VRAM is tight during synthesis
 
@@ -248,7 +248,7 @@ Optimising for a machine with **32 GB RAM** and an **RTX 3080 (10–12 GB VRAM)*
 
 ## System Prompts
 
-These are the improved prompts for the Qwen 2.5 segmentation step.
+These are the improved prompts for the Qwen3 segmentation step.
 
 ### System prompt (Segmentation Pass 1)
 
