@@ -112,8 +112,18 @@ def _strip_markdown(text: str) -> str:
     text = re.sub(r"___(.+?)___", r"\1", text, flags=re.DOTALL)
     text = re.sub(r"\*\*(.+?)\*\*", r"\1", text, flags=re.DOTALL)
     text = re.sub(r"__(.+?)__", r"\1", text, flags=re.DOTALL)
-    text = re.sub(r"(?<![A-Za-z0-9])\*(?!\s)(.+?)(?<!\s)\*(?![A-Za-z0-9])", r"\1", text, flags=re.DOTALL)
-    text = re.sub(r"(?<![A-Za-z0-9])_(?!\s)(.+?)(?<!\s)_(?![A-Za-z0-9])", r"\1", text, flags=re.DOTALL)
+    text = re.sub(
+        r"(?<![A-Za-z0-9])\*(?!\s)(.+?)(?<!\s)\*(?![A-Za-z0-9])",
+        r"\1",
+        text,
+        flags=re.DOTALL,
+    )
+    text = re.sub(
+        r"(?<![A-Za-z0-9])_(?!\s)(.+?)(?<!\s)_(?![A-Za-z0-9])",
+        r"\1",
+        text,
+        flags=re.DOTALL,
+    )
 
     # Strikethrough.
     text = re.sub(r"~~(.+?)~~", r"\1", text, flags=re.DOTALL)
