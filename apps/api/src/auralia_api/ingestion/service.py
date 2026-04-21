@@ -25,6 +25,7 @@ def _persist_ingestion_result(
 
     document = {
         "id": document_id,
+        "source_type": source_type,
         "source_id": source_id,
         "chapter_id": chapter_id,
         "title": title,

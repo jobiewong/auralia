@@ -1,0 +1,2 @@
+"""Shared SQLite bootstrap helpers."""
+

@@ -3,21 +3,26 @@
   "private": true,
   "version": "0.0.1",
   "type": "module",
+  "exports": {
+    "./schema": "./drizzle/schema.ts"
+  },
   "scripts": {
     "build": "node -e \"console.log('@auralia/db: no bundle')\"",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate",
+    "db:migrate": "node scripts/baseline-existing.mjs && drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
     "lint": "node -e \"console.log('@auralia/db: no eslint')\"",
     "test": "node -e \"console.log('@auralia/db: no tests')\"",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
-  "dependencies": {
-    "drizzle-orm": "^0.41.0"
+  "peerDependencies": {
+    "drizzle-orm": "^0.45.1"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
+    "better-sqlite3": "^12.6.2",
     "drizzle-kit": "^0.30.4",
+    "drizzle-orm": "^0.45.1",
     "typescript": "^5.8.3"
   }
 }

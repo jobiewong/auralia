@@ -5,6 +5,8 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
+from auralia_api.storage.works import ensure_work_schema, touch_work_for_document
+
 MIGRATION_SQL = """
 CREATE TABLE IF NOT EXISTS documents (
   id TEXT PRIMARY KEY NOT NULL,
@@ -80,6 +82,7 @@ def _connect(sqlite_path: str) -> sqlite3.Connection:
     conn.execute("PRAGMA foreign_keys = ON;")
     conn.executescript(MIGRATION_SQL)
     _ensure_documents_roster(conn)
+    ensure_work_schema(conn)
     return conn
 
 
@@ -194,6 +197,7 @@ def save_document_roster(
             "WHERE id = ?",
             (json.dumps(roster), document_id),
         )
+        touch_work_for_document(conn, document_id=document_id)
 
 
 def insert_attribution_job(

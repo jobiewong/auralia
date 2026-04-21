@@ -5,6 +5,8 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
+from auralia_api.storage.works import ensure_work_schema
+
 # Dev-convenience bootstrap mirroring the canonical Drizzle migrations at
 # packages/db/drizzle/migrations/0000_m1_baseline.sql (spans table) and
 # packages/db/drizzle/migrations/0003_m3_segmentation_jobs.sql. Keep in sync.
@@ -84,6 +86,7 @@ def _connect(sqlite_path: str) -> sqlite3.Connection:
     conn.execute("PRAGMA foreign_keys = ON;")
     conn.executescript(MIGRATION_SQL)
     _ensure_documents_roster(conn)
+    ensure_work_schema(conn)
     return conn
 
 

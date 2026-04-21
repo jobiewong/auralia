@@ -1,12 +1,34 @@
-import { index, integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import {
+  index,
+  integer,
+  real,
+  sqliteTable,
+  text,
+  uniqueIndex,
+} from "drizzle-orm/sqlite-core";
 
 const timestamps = {
   createdAt: text("created_at").notNull().default("CURRENT_TIMESTAMP"),
   updatedAt: text("updated_at").notNull().default("CURRENT_TIMESTAMP"),
 };
 
+export const works = sqliteTable("works", {
+  id: text("id").primaryKey(),
+  slug: text("slug").notNull(),
+  title: text("title").notNull(),
+  sourceType: text("source_type").notNull(),
+  sourceId: text("source_id").notNull(),
+  authors: text("authors"), // JSON blob: source-specific author list
+  sourceMetadata: text("source_metadata"), // JSON blob: work-level source metadata
+  ...timestamps,
+}, (table) => [
+  uniqueIndex("idx_works_slug_unique").on(table.slug),
+  index("idx_works_updated_at").on(table.updatedAt),
+]);
+
 export const documents = sqliteTable("documents", {
   id: text("id").primaryKey(),
+  workId: text("work_id").references(() => works.id, { onDelete: "set null" }),
   sourceId: text("source_id").notNull(),
   chapterId: text("chapter_id").notNull(),
   title: text("title"),
@@ -16,7 +38,9 @@ export const documents = sqliteTable("documents", {
   sourceMetadata: text("source_metadata"), // JSON blob, source-specific (AO3 author/work/nav, etc.)
   roster: text("roster"), // JSON blob: cast list produced by attribution pass (canonical_name, aliases, descriptor)
   ...timestamps,
-});
+}, (table) => [
+  index("idx_documents_work_id").on(table.workId),
+]);
 
 export const ingestionJobs = sqliteTable(
   "ingestion_jobs",

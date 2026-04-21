@@ -4,6 +4,8 @@ import json
 import sqlite3
 from pathlib import Path
 
+from auralia_api.storage.works import ensure_work_for_document, ensure_work_schema
+
 # Dev-convenience bootstrap that mirrors the canonical Drizzle migrations
 # under packages/db/drizzle/migrations/. Keep these in sync; Drizzle is the
 # source of truth (see docs/migrations.md).
@@ -47,6 +49,7 @@ def _connect(sqlite_path: str) -> sqlite3.Connection:
     conn.execute("PRAGMA foreign_keys = ON;")
     conn.executescript(MIGRATION_SQL)
     _ensure_documents_columns(conn)
+    ensure_work_schema(conn)
     return conn
 
 
@@ -61,10 +64,12 @@ def _ensure_documents_columns(conn: sqlite3.Connection) -> None:
 def insert_document(*, sqlite_path: str, document: dict) -> None:
     source_metadata = document.get("source_metadata")
     with _connect(sqlite_path) as conn:
+        work_id = ensure_work_for_document(conn, document=document)
         conn.execute(
             """
             INSERT INTO documents (
                 id,
+                work_id,
                 source_id,
                 chapter_id,
                 title,
@@ -73,10 +78,11 @@ def insert_document(*, sqlite_path: str, document: dict) -> None:
                 normalization,
                 source_metadata
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 document["id"],
+                work_id,
                 document["source_id"],
                 document["chapter_id"],
                 document.get("title"),
