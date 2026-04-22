@@ -58,6 +58,22 @@ const UpdateSpanAttributionInput = z.object({
   needsReview: z.boolean().default(false),
 })
 
+const CastCharacterInput = z.object({
+  documentId: z.string().min(1),
+  canonicalName: z.string().trim().min(1),
+  aliases: z.array(z.string().trim().min(1)).default([]),
+  descriptor: z.string().trim().nullable().default(null),
+})
+
+const UpdateCastCharacterInput = CastCharacterInput.extend({
+  originalName: z.string().trim().min(1),
+})
+
+const DeleteCastCharacterInput = z.object({
+  documentId: z.string().min(1),
+  canonicalName: z.string().trim().min(1),
+})
+
 export const listDocumentSpans = createServerFn({ method: 'GET' })
   .inputValidator(ListDocumentSpansInput)
   .handler(async ({ data }) => {
@@ -243,6 +259,7 @@ export const updateSpanAttribution = createServerFn({ method: 'POST' })
           id: spans.id,
           documentId: spans.documentId,
           workId: documents.workId,
+          roster: documents.roster,
         })
         .from(spans)
         .innerJoin(documents, eq(spans.documentId, documents.id))
@@ -288,7 +305,10 @@ export const updateSpanAttribution = createServerFn({ method: 'POST' })
         .where(eq(spans.id, data.spanId))
         .run()
       tx.update(documents)
-        .set({ updatedAt: now })
+        .set({
+          roster: addRosterCharacter(span.roster, speaker),
+          updatedAt: now,
+        })
         .where(eq(documents.id, span.documentId))
         .run()
 
@@ -305,6 +325,169 @@ export const updateSpanAttribution = createServerFn({ method: 'POST' })
         speakerConfidence,
         needsReview: data.needsReview,
       }
+    })
+  })
+
+export const addCastCharacter = createServerFn({ method: 'POST' })
+  .inputValidator(CastCharacterInput)
+  .handler(async ({ data }) => {
+    const [{ db }, { documents, works }, { eq }] = await Promise.all([
+      import('./index.ts'),
+      import('./schema.ts'),
+      import('drizzle-orm'),
+    ])
+    const now = new Date().toISOString()
+
+    return db.transaction((tx) => {
+      const document = tx
+        .select({
+          id: documents.id,
+          workId: documents.workId,
+          roster: documents.roster,
+        })
+        .from(documents)
+        .where(eq(documents.id, data.documentId))
+        .get()
+
+      if (!document) {
+        throw new Error('Document not found')
+      }
+
+      tx.update(documents)
+        .set({
+          roster: upsertRosterCharacter(document.roster, {
+            canonicalName: data.canonicalName,
+            aliases: data.aliases,
+            descriptor: data.descriptor || null,
+          }),
+          updatedAt: now,
+        })
+        .where(eq(documents.id, data.documentId))
+        .run()
+
+      if (document.workId) {
+        tx.update(works)
+          .set({ updatedAt: now })
+          .where(eq(works.id, document.workId))
+          .run()
+      }
+
+      return { canonicalName: data.canonicalName }
+    })
+  })
+
+export const updateCastCharacter = createServerFn({ method: 'POST' })
+  .inputValidator(UpdateCastCharacterInput)
+  .handler(async ({ data }) => {
+    const [
+      { db },
+      { attributions, documents, spans, works },
+      { and, eq, inArray },
+    ] = await Promise.all([
+      import('./index.ts'),
+      import('./schema.ts'),
+      import('drizzle-orm'),
+    ])
+    const now = new Date().toISOString()
+
+    return db.transaction((tx) => {
+      const document = tx
+        .select({
+          id: documents.id,
+          workId: documents.workId,
+          roster: documents.roster,
+        })
+        .from(documents)
+        .where(eq(documents.id, data.documentId))
+        .get()
+
+      if (!document) {
+        throw new Error('Document not found')
+      }
+
+      const spanRows = tx
+        .select({ id: spans.id })
+        .from(spans)
+        .where(eq(spans.documentId, data.documentId))
+        .all()
+      const spanIds = spanRows.map((span) => span.id)
+
+      if (spanIds.length > 0 && data.originalName !== data.canonicalName) {
+        tx.update(attributions)
+          .set({ speaker: data.canonicalName, updatedAt: now })
+          .where(
+            and(
+              inArray(attributions.spanId, spanIds),
+              eq(attributions.speaker, data.originalName),
+            ),
+          )
+          .run()
+      }
+
+      tx.update(documents)
+        .set({
+          roster: renameRosterCharacter(document.roster, data.originalName, {
+            canonicalName: data.canonicalName,
+            aliases: data.aliases,
+            descriptor: data.descriptor || null,
+          }),
+          updatedAt: now,
+        })
+        .where(eq(documents.id, data.documentId))
+        .run()
+
+      if (document.workId) {
+        tx.update(works)
+          .set({ updatedAt: now })
+          .where(eq(works.id, document.workId))
+          .run()
+      }
+
+      return { canonicalName: data.canonicalName }
+    })
+  })
+
+export const deleteCastCharacter = createServerFn({ method: 'POST' })
+  .inputValidator(DeleteCastCharacterInput)
+  .handler(async ({ data }) => {
+    const [{ db }, { documents, works }, { eq }] = await Promise.all([
+      import('./index.ts'),
+      import('./schema.ts'),
+      import('drizzle-orm'),
+    ])
+    const now = new Date().toISOString()
+
+    return db.transaction((tx) => {
+      const document = tx
+        .select({
+          id: documents.id,
+          workId: documents.workId,
+          roster: documents.roster,
+        })
+        .from(documents)
+        .where(eq(documents.id, data.documentId))
+        .get()
+
+      if (!document) {
+        throw new Error('Document not found')
+      }
+
+      tx.update(documents)
+        .set({
+          roster: deleteRosterCharacter(document.roster, data.canonicalName),
+          updatedAt: now,
+        })
+        .where(eq(documents.id, data.documentId))
+        .run()
+
+      if (document.workId) {
+        tx.update(works)
+          .set({ updatedAt: now })
+          .where(eq(works.id, document.workId))
+          .run()
+      }
+
+      return { canonicalName: data.canonicalName }
     })
   })
 
@@ -391,3 +574,160 @@ export const deleteDocument = createServerFn({ method: 'POST' })
       return { deleted: result.changes }
     })
   })
+
+type RosterCharacter = {
+  canonicalName: string
+  aliases: string[]
+  descriptor: string | null
+}
+
+function addRosterCharacter(rosterJson: string | null, speaker: string) {
+  if (speaker === 'UNKNOWN') {
+    return rosterJson
+  }
+  const roster = parseRosterJson(rosterJson)
+  const exists = roster.some(
+    (character) =>
+      character.canonicalName.toLowerCase() === speaker.toLowerCase(),
+  )
+  if (exists) {
+    return serializeRoster(roster)
+  }
+  return serializeRoster([
+    ...roster,
+    normalizeRosterCharacter({
+      canonicalName: speaker,
+      aliases: [],
+      descriptor: null,
+    }),
+  ])
+}
+
+function upsertRosterCharacter(
+  rosterJson: string | null,
+  character: RosterCharacter,
+) {
+  const roster = parseRosterJson(rosterJson)
+  const index = roster.findIndex(
+    (item) =>
+      item.canonicalName.toLowerCase() === character.canonicalName.toLowerCase(),
+  )
+  const nextCharacter = normalizeRosterCharacter(character)
+
+  if (index === -1) {
+    return serializeRoster([...roster, nextCharacter])
+  }
+
+  const nextRoster = [...roster]
+  nextRoster[index] = {
+    ...nextRoster[index],
+    aliases: nextCharacter.aliases,
+    descriptor: nextCharacter.descriptor,
+  }
+  return serializeRoster(nextRoster)
+}
+
+function renameRosterCharacter(
+  rosterJson: string | null,
+  originalName: string,
+  character: RosterCharacter,
+) {
+  const roster = parseRosterJson(rosterJson)
+  const withoutOriginal = roster.filter(
+    (item) => item.canonicalName !== originalName,
+  )
+  const withoutDuplicate = withoutOriginal.filter(
+    (item) =>
+      item.canonicalName.toLowerCase() !== character.canonicalName.toLowerCase(),
+  )
+  return serializeRoster([
+    ...withoutDuplicate,
+    normalizeRosterCharacter(character),
+  ])
+}
+
+function deleteRosterCharacter(rosterJson: string | null, canonicalName: string) {
+  return serializeRoster(
+    parseRosterJson(rosterJson).filter(
+      (character) => character.canonicalName !== canonicalName,
+    ),
+  )
+}
+
+function parseRosterJson(rosterJson: string | null) {
+  if (!rosterJson) {
+    return []
+  }
+
+  try {
+    const parsed = JSON.parse(rosterJson) as unknown
+    const roster = Array.isArray(parsed)
+      ? parsed
+      : typeof parsed === 'object' && parsed !== null && 'characters' in parsed
+        ? (parsed as { characters?: unknown }).characters
+        : null
+
+    if (!Array.isArray(roster)) {
+      return []
+    }
+
+    return roster.flatMap((character): RosterCharacter[] => {
+      if (typeof character !== 'object' || character === null) {
+        return []
+      }
+      const record = character as Record<string, unknown>
+      const canonicalName =
+        typeof record.canonical_name === 'string'
+          ? record.canonical_name
+          : typeof record.canonicalName === 'string'
+            ? record.canonicalName
+            : null
+
+      if (!canonicalName) {
+        return []
+      }
+
+      return [
+        normalizeRosterCharacter({
+          canonicalName,
+          aliases: Array.isArray(record.aliases)
+            ? record.aliases.filter(
+                (alias): alias is string => typeof alias === 'string',
+              )
+            : [],
+          descriptor:
+            typeof record.descriptor === 'string' ? record.descriptor : null,
+        }),
+      ]
+    })
+  } catch {
+    return []
+  }
+}
+
+function normalizeRosterCharacter(character: RosterCharacter) {
+  return {
+    canonicalName: character.canonicalName.trim(),
+    aliases: Array.from(
+      new Set(
+        character.aliases
+          .map((alias) => alias.trim())
+          .filter((alias) => alias.length > 0),
+      ),
+    ),
+    descriptor: character.descriptor?.trim() || null,
+  }
+}
+
+function serializeRoster(roster: RosterCharacter[]) {
+  return JSON.stringify({
+    characters: roster
+      .filter((character) => character.canonicalName.length > 0)
+      .sort((a, b) => a.canonicalName.localeCompare(b.canonicalName))
+      .map((character) => ({
+        canonical_name: character.canonicalName,
+        aliases: character.aliases,
+        descriptor: character.descriptor,
+      })),
+  })
+}
