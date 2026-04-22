@@ -159,6 +159,13 @@ export function countUnknown(spans: Array<{ speaker: string | null }>) {
   return spans.filter((span) => span.speaker === 'UNKNOWN').length
 }
 
+export function countReviewSpans(
+  spans: Array<{ needsReview: boolean | null; speaker: string | null }>,
+) {
+  return spans.filter((span) => span.needsReview || span.speaker === 'UNKNOWN')
+    .length
+}
+
 function formatJsonValue(value: unknown) {
   if (value === null) {
     return 'null'

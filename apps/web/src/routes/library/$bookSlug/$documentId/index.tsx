@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 
 import { useDocumentDiagnostics, useDocumentSpans } from '~/db-collections'
 import {
-  countNeedsReview,
+  countReviewSpans,
   formatDate,
   formatJsonSummary,
   formatMetric,
@@ -17,8 +17,7 @@ function RouteComponent() {
   const { bookSlug, documentId } = Route.useParams()
   const spans = useDocumentSpans(bookSlug, documentId)
   const diagnostics = useDocumentDiagnostics(bookSlug, documentId)
-  const needsReview =
-    diagnostics?.attributionCounts.needsReview ?? countNeedsReview(spans)
+  const reviewCount = countReviewSpans(spans)
 
   return (
     <div className="grid gap-12">
@@ -42,18 +41,18 @@ function RouteComponent() {
               detail="speaker data available on Text"
             />
             <PipelineStage
-              label="Review"
-              status={needsReview > 0 ? 'needs review' : 'clear'}
-              detail={
-                needsReview > 0 ? (
-                  <Link
-                    to="/library/$bookSlug/$documentId/text"
-                    params={{ bookSlug, documentId }}
-                    className="hover:underline"
-                  >
-                    {formatMetric(needsReview, 'needs review')} on Text
-                  </Link>
-                ) : (
+            label="Review"
+            status={reviewCount > 0 ? 'needs review' : 'clear'}
+            detail={
+              reviewCount > 0 ? (
+                <Link
+                  to="/library/$bookSlug/$documentId/text"
+                  params={{ bookSlug, documentId }}
+                  className="hover:underline"
+                >
+                  {formatMetric(reviewCount, 'needs review')} on Text
+                </Link>
+              ) : (
                   'no review flags'
                 )
               }

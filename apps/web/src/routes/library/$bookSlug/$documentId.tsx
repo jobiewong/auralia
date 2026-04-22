@@ -16,13 +16,12 @@ import {
   preloadDocumentSpans,
   useBookDocuments,
   useBooks,
-  useDocumentDiagnostics,
   useDocumentSpans,
 } from '~/db-collections'
 import { deleteDocument } from '~/db/documents'
 import {
   cn,
-  countNeedsReview,
+  countReviewSpans,
   formatDate,
   formatSpanCount,
   formatTextLength,
@@ -56,11 +55,9 @@ function RouteComponent() {
   const books = useBooks()
   const chapters = useBookDocuments(bookSlug)
   const spans = useDocumentSpans(bookSlug, documentId)
-  const diagnostics = useDocumentDiagnostics(bookSlug, documentId)
   const book = books.find((item) => item.slug === bookSlug)
   const chapter = chapters.find((item) => item.id === documentId)
-  const needsReview =
-    diagnostics?.attributionCounts.needsReview ?? countNeedsReview(spans)
+  const reviewCount = countReviewSpans(spans)
 
   if (!book || !chapter) {
     return (
@@ -137,7 +134,7 @@ function RouteComponent() {
             <DocumentNavLink
               to="/library/$bookSlug/$documentId/text"
               label="Text"
-              attentionCount={needsReview}
+              attentionCount={reviewCount}
             />
             <DocumentNavLink
               to="/library/$bookSlug/$documentId/synthesis"

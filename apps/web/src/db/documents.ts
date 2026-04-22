@@ -52,6 +52,12 @@ const ListDocumentSpansInput = z.object({
   documentId: z.string().min(1),
 })
 
+const UpdateSpanAttributionInput = z.object({
+  spanId: z.string().min(1),
+  speaker: z.string().trim().min(1),
+  needsReview: z.boolean().default(false),
+})
+
 export const listDocumentSpans = createServerFn({ method: 'GET' })
   .inputValidator(ListDocumentSpansInput)
   .handler(async ({ data }) => {
@@ -211,6 +217,95 @@ export const getDocumentDiagnostics = createServerFn({ method: 'GET' })
       latestSegmentationJob: latestSegmentationJob ?? null,
       latestAttributionJob: latestAttributionJob ?? null,
     }
+  })
+
+export const updateSpanAttribution = createServerFn({ method: 'POST' })
+  .inputValidator(UpdateSpanAttributionInput)
+  .handler(async ({ data }) => {
+    const [
+      { randomUUID },
+      { db },
+      { attributions, documents, spans, works },
+      { eq },
+    ] = await Promise.all([
+      import('node:crypto'),
+      import('./index.ts'),
+      import('./schema.ts'),
+      import('drizzle-orm'),
+    ])
+    const now = new Date().toISOString()
+    const speaker = data.speaker.trim()
+    const speakerConfidence = speaker === 'UNKNOWN' ? 0 : 1
+
+    return db.transaction((tx) => {
+      const span = tx
+        .select({
+          id: spans.id,
+          documentId: spans.documentId,
+          workId: documents.workId,
+        })
+        .from(spans)
+        .innerJoin(documents, eq(spans.documentId, documents.id))
+        .where(eq(spans.id, data.spanId))
+        .get()
+
+      if (!span) {
+        throw new Error('Span not found')
+      }
+
+      const existingAttribution = tx
+        .select({ id: attributions.id })
+        .from(attributions)
+        .where(eq(attributions.spanId, data.spanId))
+        .get()
+
+      if (existingAttribution) {
+        tx.update(attributions)
+          .set({
+            speaker,
+            speakerConfidence,
+            needsReview: data.needsReview,
+            updatedAt: now,
+          })
+          .where(eq(attributions.id, existingAttribution.id))
+          .run()
+      } else {
+        tx.insert(attributions)
+          .values({
+            id: randomUUID(),
+            spanId: data.spanId,
+            speaker,
+            speakerConfidence,
+            needsReview: data.needsReview,
+            createdAt: now,
+            updatedAt: now,
+          })
+          .run()
+      }
+
+      tx.update(spans)
+        .set({ updatedAt: now })
+        .where(eq(spans.id, data.spanId))
+        .run()
+      tx.update(documents)
+        .set({ updatedAt: now })
+        .where(eq(documents.id, span.documentId))
+        .run()
+
+      if (span.workId) {
+        tx.update(works)
+          .set({ updatedAt: now })
+          .where(eq(works.id, span.workId))
+          .run()
+      }
+
+      return {
+        spanId: data.spanId,
+        speaker,
+        speakerConfidence,
+        needsReview: data.needsReview,
+      }
+    })
   })
 
 const DeleteDocumentInput = z.object({
