@@ -11,14 +11,14 @@ export function ArrowLeft({ ...props }: {} & React.SVGProps<SVGSVGElement>) {
       <path
         d="M10 6L4 12L10 18"
         stroke="currentColor"
-        stroke-width="inherit"
-        stroke-linecap="square"
+        strokeWidth="inherit"
+        strokeLinecap="square"
       />
       <path
         d="M5 12H20"
         stroke="currentColor"
-        stroke-width="inherit"
-        stroke-linecap="square"
+        strokeWidth="inherit"
+        strokeLinecap="square"
       />
     </svg>
   )

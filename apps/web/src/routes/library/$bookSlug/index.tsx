@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, Link } from '@tanstack/react-router'
 import { useServerFn } from '@tanstack/react-start'
 
 import { DeleteConfirmationDialog } from '~/components/delete-confirmation-dialog'
@@ -10,8 +10,12 @@ import {
   useBooks,
 } from '~/db-collections'
 import { deleteDocument } from '~/db/documents'
-import { deleteWork } from '~/db/works'
-import { cn, parseWorkSourceMetadata } from '~/lib/utils'
+import {
+  formatDate,
+  formatSpanCount,
+  formatTextLength,
+  parseWorkSourceMetadata,
+} from '~/lib/utils'
 
 export const Route = createFileRoute('/library/$bookSlug/')({
   ssr: false,
@@ -25,10 +29,8 @@ export const Route = createFileRoute('/library/$bookSlug/')({
 
 function RouteComponent() {
   const { bookSlug } = Route.useParams()
-  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const deleteDocumentFn = useServerFn(deleteDocument)
-  const deleteWorkFn = useServerFn(deleteWork)
   const books = useBooks()
   const chapters = useBookDocuments(bookSlug)
   const book = books.find((item) => item.slug === bookSlug)
@@ -82,10 +84,16 @@ function RouteComponent() {
           <dt>Author(s)</dt>
           <dd>
             {metadata?.authors.map((author, ci) => (
-              <Link to={author.url} className="hover:underline">
+              <a
+                key={author.url}
+                href={author.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:underline"
+              >
                 {author.name}
                 {ci < metadata.authors.length - 1 ? ', ' : ''}
-              </Link>
+              </a>
             ))}
           </dd>
           <dt>Chapters</dt>
@@ -96,45 +104,6 @@ function RouteComponent() {
       </section>
 
       <section className="px-6 pb-8 sm:px-10">
-        <nav className="flex flex-wrap content-start gap-4 mb-10">
-          <BookAction
-            to="/library/$bookSlug"
-            slug={book.slug}
-            className="bg-orange-950 text-orange-500"
-          >
-            Overview
-          </BookAction>
-          <BookAction to="/library/$bookSlug/pipeline" slug={book.slug}>
-            Pipeline
-          </BookAction>
-          <BookAction to="/library/$bookSlug/text" slug={book.slug}>
-            Text
-          </BookAction>
-          <BookAction to="/library/$bookSlug/review" slug={book.slug}>
-            Review
-          </BookAction>
-          <BookAction to="/library/$bookSlug/cast" slug={book.slug}>
-            Cast
-          </BookAction>
-          <BookAction to="/library/$bookSlug/voice-map" slug={book.slug}>
-            Voice Map
-          </BookAction>
-          <BookAction to="/library/$bookSlug/synthesis" slug={book.slug}>
-            Synthesis
-          </BookAction>
-          <DeleteConfirmationDialog
-            className="ml-auto rounded-full border border-orange-900 px-4! py-2! w-fit font-serif text-xl transition-colors duration-150 ease-in-out hover:border-orange-950 hover:bg-orange-950 hover:text-orange-500 hover:no-underline"
-            title="Delete work"
-            description={`Delete ${book.title} and all associated chapters, spans, jobs, and mappings? This cannot be undone.`}
-            triggerLabel="Delete Work"
-            confirmLabel="Delete Work"
-            onConfirm={async () => {
-              await deleteWorkFn({ data: { workId: book.id } })
-              await queryClient.invalidateQueries({ queryKey: ['books'] })
-              await navigate({ to: '/library' })
-            }}
-          />
-        </nav>
         <div>
           {chapters.length === 0 ? (
             <p className="font-serif text-foreground/50">No chapters yet.</p>
@@ -194,57 +163,4 @@ function RouteComponent() {
       </section>
     </main>
   )
-}
-
-function BookAction({
-  to,
-  slug,
-  children,
-  className,
-}: {
-  to:
-    | '/library/$bookSlug'
-    | '/library/$bookSlug/pipeline'
-    | '/library/$bookSlug/text'
-    | '/library/$bookSlug/review'
-    | '/library/$bookSlug/cast'
-    | '/library/$bookSlug/voice-map'
-    | '/library/$bookSlug/synthesis'
-  slug: string
-  children: React.ReactNode
-  className?: string
-}) {
-  return (
-    <Link
-      to={to}
-      params={{ bookSlug: slug }}
-      className={cn(
-        'rounded-full border border-orange-900 px-4 py-2 w-fit font-serif text-xl transition-colors duration-150 ease-in-out hover:border-orange-950 hover:bg-orange-950 hover:text-orange-500',
-        className,
-      )}
-    >
-      {children}
-    </Link>
-  )
-}
-
-function formatDate(value: string) {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) {
-    return value
-  }
-  return new Intl.DateTimeFormat('en-GB', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  }).format(date)
-}
-
-function formatTextLength(textLength: number) {
-  return `${new Intl.NumberFormat('en-GB').format(textLength)} chars`
-}
-
-function formatSpanCount(spanCount: number) {
-  const label = spanCount === 1 ? 'span' : 'spans'
-  return `${new Intl.NumberFormat('en-GB').format(spanCount)} ${label}`
 }

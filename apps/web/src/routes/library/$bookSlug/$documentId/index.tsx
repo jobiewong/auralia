@@ -1,179 +1,147 @@
-import { useQueryClient } from '@tanstack/react-query'
-import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
-import { useServerFn } from '@tanstack/react-start'
+import { createFileRoute } from '@tanstack/react-router'
 
-import { DeleteConfirmationDialog } from '~/components/delete-confirmation-dialog'
-import { ArrowLeft } from '~/components/icons/arrow-left'
+import { useDocumentDiagnostics, useDocumentSpans } from '~/db-collections'
 import {
-  preloadBookDocuments,
-  preloadBooks,
-  preloadDocumentSpans,
-  useBookDocuments,
-  useBooks,
-  useDocumentSpans,
-} from '~/db-collections'
-import { deleteDocument } from '~/db/documents'
+  countAttributed,
+  countByType,
+  countNeedsReview,
+  countUnknown,
+  formatConfidence,
+  formatCount,
+  formatDate,
+  formatJsonSummary,
+  formatMetric,
+  formatSpanCount,
+} from '~/lib/utils'
 
 export const Route = createFileRoute('/library/$bookSlug/$documentId/')({
-  ssr: false,
-  beforeLoad: ({ context, params }) =>
-    Promise.all([
-      preloadBooks(context.queryClient),
-      preloadBookDocuments(context.queryClient, params.bookSlug),
-      preloadDocumentSpans(
-        context.queryClient,
-        params.bookSlug,
-        params.documentId,
-      ),
-    ]),
   component: RouteComponent,
 })
 
 function RouteComponent() {
   const { bookSlug, documentId } = Route.useParams()
-  const navigate = useNavigate()
-  const queryClient = useQueryClient()
-  const deleteDocumentFn = useServerFn(deleteDocument)
-  const books = useBooks()
-  const chapters = useBookDocuments(bookSlug)
   const spans = useDocumentSpans(bookSlug, documentId)
-  const book = books.find((item) => item.slug === bookSlug)
-  const chapter = chapters.find((item) => item.id === documentId)
-
-  if (!book || !chapter) {
-    return (
-      <main className="page-wrap">
-        <section className="px-6 py-10 sm:px-10 sm:py-14">
-          <p className="mb-4 font-serif text-xl">Library</p>
-          <h1 className="mb-8 text-4xl leading-tight font-black sm:text-6xl font-display">
-            Chapter not found
-          </h1>
-          <Link
-            to="/library/$bookSlug"
-            params={{ bookSlug }}
-            className="font-serif text-xl hover:underline"
-          >
-            Back to book
-          </Link>
-        </section>
-      </main>
-    )
-  }
+  const diagnostics = useDocumentDiagnostics(bookSlug, documentId)
 
   return (
-    <main className="page-wrap">
-      <section className="px-6 py-10 sm:px-10 sm:py-14">
-        <p className="mb-4 font-serif text-xl text-foreground/50">
-          <Link to="/library" className="hover:underline">
-            Library
-          </Link>{' '}
-          /{' '}
-          <Link
-            to="/library/$bookSlug"
-            params={{ bookSlug: book.slug }}
-            className="hover:underline"
-          >
-            {book.title}
-          </Link>{' '}
-          / {chapter.chapterId}
-        </p>
-        <h1 className="display-title mb-8">
-          {chapter.title || chapter.chapterId}
-        </h1>
-        <dl className="grid max-w-4xl gap-2 border-y py-5 font-serif sm:grid-cols-[12rem_1fr]">
-          <dt className="text-foreground/50">Book</dt>
-          <dd>{book.title}</dd>
-          <dt className="text-foreground/50">Document</dt>
-          <dd>{chapter.id}</dd>
-          <dt className="text-foreground/50">Spans</dt>
-          <dd>{formatSpanCount(spans.length)}</dd>
-          <dt className="text-foreground/50">Length</dt>
-          <dd>{formatTextLength(chapter.textLength)}</dd>
-          <dt className="text-foreground/50">Updated</dt>
-          <dd>{formatDate(chapter.updatedAt)}</dd>
-        </dl>
+    <div className="grid gap-12">
+      <section>
+        <h2 className="mb-5 font-serif text-3xl">Pipeline</h2>
+        <ol className="space-y-2 font-serif">
+          <PipelineStage
+            label="Ingested"
+            status="complete"
+            detail="document stored"
+          />
+          <PipelineStage
+            label="Segmented"
+            status={diagnostics?.latestSegmentationJob?.status ?? 'missing'}
+            detail={`${formatSpanCount(
+              diagnostics?.spanCounts.total ?? spans.length,
+            )} / ${formatCount(
+              diagnostics?.spanCounts.dialogue ?? countByType(spans, 'dialogue'),
+              'dialogue',
+            )} / ${formatCount(
+              diagnostics?.spanCounts.narration ??
+                countByType(spans, 'narration'),
+              'narration',
+            )}`}
+          />
+          <PipelineStage
+            label="Attributed"
+            status={diagnostics?.latestAttributionJob?.status ?? 'missing'}
+            detail={`${formatMetric(
+              diagnostics?.attributionCounts.attributed ?? countAttributed(spans),
+              'attributed',
+            )} / ${formatConfidence(
+              diagnostics?.attributionCounts.averageConfidence,
+            )}`}
+          />
+          <PipelineStage
+            label="Review"
+            status={
+              (diagnostics?.attributionCounts.needsReview ??
+                countNeedsReview(spans)) > 0
+                ? 'needs review'
+                : 'clear'
+            }
+            detail={`${formatMetric(
+              diagnostics?.attributionCounts.needsReview ??
+                countNeedsReview(spans),
+              'needs review',
+            )} / ${formatMetric(
+              diagnostics?.attributionCounts.unknown ?? countUnknown(spans),
+              'unknown',
+            )}`}
+          />
+        </ol>
       </section>
 
-      <section className="px-6 pb-8 sm:px-10">
-        <div className="mb-10 flex flex-wrap justify-between gap-4">
-          <Link
-            to="/library/$bookSlug"
-            params={{ bookSlug: book.slug }}
-            className="nav-link"
-          >
-            <ArrowLeft className="size-6" />
-            Back to Book
-          </Link>
-          <DeleteConfirmationDialog
-            className="rounded-full border border-orange-900 px-4! py-2! w-fit font-serif text-xl transition-colors duration-150 ease-in-out hover:border-orange-950 hover:bg-orange-950 hover:text-orange-500 hover:no-underline"
-            title="Delete chapter"
-            description={`Delete ${chapter.title || chapter.chapterId} and all associated spans, jobs, and mappings? This cannot be undone.`}
-            triggerLabel="Delete Chapter"
-            confirmLabel="Delete Chapter"
-            onConfirm={async () => {
-              await deleteDocumentFn({ data: { documentId: chapter.id } })
-              await Promise.all([
-                queryClient.invalidateQueries({ queryKey: ['books'] }),
-                queryClient.invalidateQueries({
-                  queryKey: ['book-documents', book.slug],
-                }),
-                queryClient.invalidateQueries({
-                  queryKey: ['document-spans', book.slug, chapter.id],
-                }),
-              ])
-              await navigate({
-                to: '/library/$bookSlug',
-                params: { bookSlug: book.slug },
-              })
-            }}
-          />
-        </div>
-        {spans.length === 0 ? (
-          <p className="font-serif text-foreground/50">No spans yet.</p>
-        ) : (
-          <ol className="space-y-3">
-            {spans.map((span, index) => (
-              <li
-                key={span.id}
-                className="grid gap-2 font-serif sm:grid-cols-[4rem_9rem_minmax(0,1fr)_auto] sm:items-baseline"
-              >
-                <p className="text-foreground/50">
-                  {String(index + 1).padStart(2, '0')}
-                </p>
-                <p className="text-foreground/50">{span.type}</p>
-                <div>
-                  <p className="leading-tight">{span.text}</p>
-                  <p className="text-foreground/50">
-                    {span.start}-{span.end} /{' '}
-                    {formatTextLength(span.end - span.start)}
-                  </p>
-                </div>
-              </li>
-            ))}
-          </ol>
-        )}
-      </section>
-    </main>
+      <div className="grid gap-10 lg:grid-cols-2">
+        <JobSummary
+          title="Segmentation Job"
+          job={diagnostics?.latestSegmentationJob ?? null}
+        />
+        <JobSummary
+          title="Attribution Job"
+          job={diagnostics?.latestAttributionJob ?? null}
+        />
+      </div>
+    </div>
   )
 }
 
-function formatDate(value: string) {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) {
-    return value
-  }
-  return new Intl.DateTimeFormat('en-GB', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  }).format(date)
+function PipelineStage({
+  label,
+  status,
+  detail,
+}: {
+  label: string
+  status: string
+  detail: string
+}) {
+  return (
+    <li className="grid gap-2 sm:grid-cols-[10rem_9rem_1fr]">
+      <p>{label}</p>
+      <p className="text-foreground/50">{status}</p>
+      <p className="text-foreground/50">{detail}</p>
+    </li>
+  )
 }
 
-function formatTextLength(textLength: number) {
-  return `${new Intl.NumberFormat('en-GB').format(textLength)} chars`
-}
-
-function formatSpanCount(spanCount: number) {
-  const label = spanCount === 1 ? 'span' : 'spans'
-  return `${new Intl.NumberFormat('en-GB').format(spanCount)} ${label}`
+function JobSummary({
+  title,
+  job,
+}: {
+  title: string
+  job: {
+    id: string
+    status: string
+    modelName?: string | null
+    stats?: string | null
+    errorReport?: string | null
+    updatedAt: string
+  } | null
+}) {
+  return (
+    <section className="font-serif">
+      <h2 className="mb-5 text-3xl">{title}</h2>
+      {!job ? (
+        <p className="text-foreground/50">No job recorded.</p>
+      ) : (
+        <dl className="grid gap-2 border-y py-5 sm:grid-cols-[9rem_1fr]">
+          <dt className="text-foreground/50">Status</dt>
+          <dd>{job.status}</dd>
+          <dt className="text-foreground/50">Updated</dt>
+          <dd>{formatDate(job.updatedAt)}</dd>
+          <dt className="text-foreground/50">Model</dt>
+          <dd>{job.modelName || 'none'}</dd>
+          <dt className="text-foreground/50">Stats</dt>
+          <dd>{formatJsonSummary(job.stats)}</dd>
+          <dt className="text-foreground/50">Error</dt>
+          <dd>{formatJsonSummary(job.errorReport)}</dd>
+        </dl>
+      )}
+    </section>
+  )
 }

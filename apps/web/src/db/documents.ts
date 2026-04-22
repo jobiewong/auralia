@@ -39,6 +39,7 @@ export const listWorkDocuments = createServerFn({ method: 'GET' })
         documents.chapterId,
         documents.title,
         documents.textLength,
+        documents.sourceMetadata,
         documents.createdAt,
         documents.updatedAt,
       )
@@ -54,12 +55,15 @@ const ListDocumentSpansInput = z.object({
 export const listDocumentSpans = createServerFn({ method: 'GET' })
   .inputValidator(ListDocumentSpansInput)
   .handler(async ({ data }) => {
-    const [{ db }, { documents, spans, works }, { asc, and, eq }] =
-      await Promise.all([
-        import('./index.ts'),
-        import('./schema.ts'),
-        import('drizzle-orm'),
-      ])
+    const [
+      { db },
+      { attributions, documents, spans, works },
+      { asc, and, eq },
+    ] = await Promise.all([
+      import('./index.ts'),
+      import('./schema.ts'),
+      import('drizzle-orm'),
+    ])
 
     return db
       .select({
@@ -69,17 +73,144 @@ export const listDocumentSpans = createServerFn({ method: 'GET' })
         text: spans.text,
         start: spans.start,
         end: spans.end,
+        speaker: attributions.speaker,
+        speakerConfidence: attributions.speakerConfidence,
+        needsReview: attributions.needsReview,
         createdAt: spans.createdAt,
         updatedAt: spans.updatedAt,
       })
       .from(spans)
       .innerJoin(documents, eq(spans.documentId, documents.id))
       .innerJoin(works, eq(documents.workId, works.id))
+      .leftJoin(attributions, eq(attributions.spanId, spans.id))
       .where(
         and(eq(works.slug, data.bookSlug), eq(documents.id, data.documentId)),
       )
       .orderBy(asc(spans.start), asc(spans.end))
       .all()
+  })
+
+export const getDocumentDiagnostics = createServerFn({ method: 'GET' })
+  .inputValidator(ListDocumentSpansInput)
+  .handler(async ({ data }) => {
+    const [
+      { db },
+      {
+        attributions,
+        attributionJobs,
+        documents,
+        segmentationJobs,
+        spans,
+        works,
+      },
+      { and, desc, eq },
+    ] = await Promise.all([
+      import('./index.ts'),
+      import('./schema.ts'),
+      import('drizzle-orm'),
+    ])
+
+    const document = db
+      .select({
+        id: documents.id,
+        roster: documents.roster,
+        sourceMetadata: documents.sourceMetadata,
+        createdAt: documents.createdAt,
+        updatedAt: documents.updatedAt,
+      })
+      .from(documents)
+      .innerJoin(works, eq(documents.workId, works.id))
+      .where(
+        and(eq(works.slug, data.bookSlug), eq(documents.id, data.documentId)),
+      )
+      .get()
+
+    if (!document) {
+      return null
+    }
+
+    const spanRows = db
+      .select({
+        id: spans.id,
+        type: spans.type,
+      })
+      .from(spans)
+      .where(eq(spans.documentId, data.documentId))
+      .all()
+    const attributionRows = db
+      .select({
+        speaker: attributions.speaker,
+        speakerConfidence: attributions.speakerConfidence,
+        needsReview: attributions.needsReview,
+      })
+      .from(attributions)
+      .innerJoin(spans, eq(attributions.spanId, spans.id))
+      .where(eq(spans.documentId, data.documentId))
+      .all()
+    const latestSegmentationJob = db
+      .select({
+        id: segmentationJobs.id,
+        status: segmentationJobs.status,
+        chunkCount: segmentationJobs.chunkCount,
+        modelName: segmentationJobs.modelName,
+        stats: segmentationJobs.stats,
+        errorReport: segmentationJobs.errorReport,
+        createdAt: segmentationJobs.createdAt,
+        updatedAt: segmentationJobs.updatedAt,
+      })
+      .from(segmentationJobs)
+      .where(eq(segmentationJobs.documentId, data.documentId))
+      .orderBy(desc(segmentationJobs.updatedAt))
+      .get()
+    const latestAttributionJob = db
+      .select({
+        id: attributionJobs.id,
+        status: attributionJobs.status,
+        modelName: attributionJobs.modelName,
+        stats: attributionJobs.stats,
+        errorReport: attributionJobs.errorReport,
+        createdAt: attributionJobs.createdAt,
+        updatedAt: attributionJobs.updatedAt,
+      })
+      .from(attributionJobs)
+      .where(eq(attributionJobs.documentId, data.documentId))
+      .orderBy(desc(attributionJobs.updatedAt))
+      .get()
+
+    const dialogueCount = spanRows.filter(
+      (span) => span.type === 'dialogue',
+    ).length
+    const narrationCount = spanRows.length - dialogueCount
+    const needsReviewCount = attributionRows.filter(
+      (attribution) => attribution.needsReview,
+    ).length
+    const unknownCount = attributionRows.filter(
+      (attribution) => attribution.speaker === 'UNKNOWN',
+    ).length
+    const averageConfidence =
+      attributionRows.length === 0
+        ? null
+        : attributionRows.reduce(
+            (total, attribution) => total + attribution.speakerConfidence,
+            0,
+          ) / attributionRows.length
+
+    return {
+      document,
+      spanCounts: {
+        total: spanRows.length,
+        dialogue: dialogueCount,
+        narration: narrationCount,
+      },
+      attributionCounts: {
+        attributed: attributionRows.length,
+        needsReview: needsReviewCount,
+        unknown: unknownCount,
+        averageConfidence,
+      },
+      latestSegmentationJob: latestSegmentationJob ?? null,
+      latestAttributionJob: latestAttributionJob ?? null,
+    }
   })
 
 const DeleteDocumentInput = z.object({

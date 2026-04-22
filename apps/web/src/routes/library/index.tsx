@@ -3,9 +3,9 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 import { useServerFn } from '@tanstack/react-start'
 
 import { DeleteConfirmationDialog } from '~/components/delete-confirmation-dialog'
-import { ArrowLeft } from '~/components/icons/arrow-left'
 import { preloadBooks, useBooks } from '~/db-collections'
 import { deleteWork } from '~/db/works'
+import { formatDate } from '~/lib/utils'
 
 export const Route = createFileRoute('/library/')({
   ssr: false,
@@ -73,16 +73,4 @@ function RouteComponent() {
       </section>
     </main>
   )
-}
-
-function formatDate(value: string) {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) {
-    return value
-  }
-  return new Intl.DateTimeFormat('en-GB', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  }).format(date)
 }

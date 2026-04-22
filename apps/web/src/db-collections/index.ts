@@ -4,10 +4,14 @@ import {
   localOnlyCollectionOptions,
   useLiveQuery,
 } from '@tanstack/react-db'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { z } from 'zod'
 
-import { listDocumentSpans, listWorkDocuments } from '~/db/documents'
+import {
+  getDocumentDiagnostics,
+  listDocumentSpans,
+  listWorkDocuments,
+} from '~/db/documents'
 import { listWorks } from '~/db/works'
 
 import type { QueryClient } from '@tanstack/react-query'
@@ -48,6 +52,9 @@ const DocumentSpanSchema = z.object({
   text: z.string(),
   start: z.number(),
   end: z.number(),
+  speaker: z.string().nullable(),
+  speakerConfidence: z.number().nullable(),
+  needsReview: z.boolean().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
 })
@@ -125,7 +132,7 @@ export function useBooks() {
     [booksCollection],
   )
 
-  return books 
+  return books
 }
 
 function createBookDocumentsCollection(
@@ -273,4 +280,30 @@ export function useDocumentSpans(bookSlug: string, documentId: string) {
   )
 
   return spans 
+}
+
+function documentDiagnosticsKey(bookSlug: string, documentId: string) {
+  return ['document-diagnostics', bookSlug, documentId] as const
+}
+
+export function preloadDocumentDiagnostics(
+  queryClient: QueryClient,
+  bookSlug: string,
+  documentId: string,
+) {
+  return queryClient.ensureQueryData({
+    queryKey: documentDiagnosticsKey(bookSlug, documentId),
+    queryFn: () => getDocumentDiagnostics({ data: { bookSlug, documentId } }),
+    staleTime: 5_000,
+  })
+}
+
+export function useDocumentDiagnostics(bookSlug: string, documentId: string) {
+  const { data: diagnostics } = useQuery({
+    queryKey: documentDiagnosticsKey(bookSlug, documentId),
+    queryFn: () => getDocumentDiagnostics({ data: { bookSlug, documentId } }),
+    staleTime: 5_000,
+  })
+
+  return diagnostics
 }
