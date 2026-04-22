@@ -36,13 +36,11 @@ export function formatTextLength(textLength: number) {
 }
 
 export function formatSpanCount(spanCount: number) {
-  const label = spanCount === 1 ? 'span' : 'spans'
-  return `${new Intl.NumberFormat('en-GB').format(spanCount)} ${label}`
+  return `${new Intl.NumberFormat('en-GB').format(spanCount)}`
 }
 
 export function formatCount(count: number, label: string) {
-  const pluralized = count === 1 ? label : `${label}s`
-  return `${new Intl.NumberFormat('en-GB').format(count)} ${pluralized}`
+  return `${new Intl.NumberFormat('en-GB').format(count)}`
 }
 
 export function formatMetric(count: number, label: string) {
@@ -67,7 +65,7 @@ export function formatJsonSummary(value: string | null | undefined) {
   if (Array.isArray(parsed)) {
     return `${parsed.length} items`
   }
-  if (typeof parsed !== 'object' || parsed === null) {
+  if (typeof parsed !== 'object') {
     return String(parsed)
   }
   return Object.entries(parsed)

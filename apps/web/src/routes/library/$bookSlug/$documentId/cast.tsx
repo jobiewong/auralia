@@ -1,9 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 
-import {
-  useDocumentDiagnostics,
-  useDocumentSpans,
-} from '~/db-collections'
+import { useDocumentDiagnostics, useDocumentSpans } from '~/db-collections'
 import { formatCount, getSpeakerCounts, parseRoster } from '~/lib/utils'
 
 export const Route = createFileRoute('/library/$bookSlug/$documentId/cast')({
@@ -27,7 +24,7 @@ function RouteComponent() {
           {roster.map((character) => (
             <li
               key={character.canonicalName}
-              className="grid gap-2 border-y py-4 sm:grid-cols-[minmax(0,1fr)_14rem]"
+              className="grid gap-2 py-4 sm:grid-cols-[minmax(0,1fr)_14rem]"
             >
               <div>
                 <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">

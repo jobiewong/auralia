@@ -1,17 +1,12 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, Link } from '@tanstack/react-router'
+import type { ReactNode } from 'react'
 
 import { useDocumentDiagnostics, useDocumentSpans } from '~/db-collections'
 import {
-  countAttributed,
-  countByType,
   countNeedsReview,
-  countUnknown,
-  formatConfidence,
-  formatCount,
   formatDate,
   formatJsonSummary,
   formatMetric,
-  formatSpanCount,
 } from '~/lib/utils'
 
 export const Route = createFileRoute('/library/$bookSlug/$documentId/')({
@@ -22,62 +17,49 @@ function RouteComponent() {
   const { bookSlug, documentId } = Route.useParams()
   const spans = useDocumentSpans(bookSlug, documentId)
   const diagnostics = useDocumentDiagnostics(bookSlug, documentId)
+  const needsReview =
+    diagnostics?.attributionCounts.needsReview ?? countNeedsReview(spans)
 
   return (
     <div className="grid gap-12">
-      <section>
-        <h2 className="mb-5 font-serif text-3xl">Pipeline</h2>
-        <ol className="space-y-2 font-serif">
-          <PipelineStage
-            label="Ingested"
-            status="complete"
-            detail="document stored"
-          />
-          <PipelineStage
-            label="Segmented"
-            status={diagnostics?.latestSegmentationJob?.status ?? 'missing'}
-            detail={`${formatSpanCount(
-              diagnostics?.spanCounts.total ?? spans.length,
-            )} / ${formatCount(
-              diagnostics?.spanCounts.dialogue ?? countByType(spans, 'dialogue'),
-              'dialogue',
-            )} / ${formatCount(
-              diagnostics?.spanCounts.narration ??
-                countByType(spans, 'narration'),
-              'narration',
-            )}`}
-          />
-          <PipelineStage
-            label="Attributed"
-            status={diagnostics?.latestAttributionJob?.status ?? 'missing'}
-            detail={`${formatMetric(
-              diagnostics?.attributionCounts.attributed ?? countAttributed(spans),
-              'attributed',
-            )} / ${formatConfidence(
-              diagnostics?.attributionCounts.averageConfidence,
-            )}`}
-          />
-          <PipelineStage
-            label="Review"
-            status={
-              (diagnostics?.attributionCounts.needsReview ??
-                countNeedsReview(spans)) > 0
-                ? 'needs review'
-                : 'clear'
-            }
-            detail={`${formatMetric(
-              diagnostics?.attributionCounts.needsReview ??
-                countNeedsReview(spans),
-              'needs review',
-            )} / ${formatMetric(
-              diagnostics?.attributionCounts.unknown ?? countUnknown(spans),
-              'unknown',
-            )}`}
-          />
-        </ol>
-      </section>
-
-      <div className="grid gap-10 lg:grid-cols-2">
+      <section className="flex flex-col gap-8">
+        <div>
+          <h2 className="mb-5 font-serif text-3xl">Status</h2>
+          <ol className="space-y-2 font-serif">
+            <PipelineStage
+              label="Ingested"
+              status="complete"
+              detail="document stored"
+            />
+            <PipelineStage
+              label="Segmented"
+              status={diagnostics?.latestSegmentationJob?.status ?? 'missing'}
+              detail="span data available on Text"
+            />
+            <PipelineStage
+              label="Attributed"
+              status={diagnostics?.latestAttributionJob?.status ?? 'missing'}
+              detail="speaker data available on Text"
+            />
+            <PipelineStage
+              label="Review"
+              status={needsReview > 0 ? 'needs review' : 'clear'}
+              detail={
+                needsReview > 0 ? (
+                  <Link
+                    to="/library/$bookSlug/$documentId/text"
+                    params={{ bookSlug, documentId }}
+                    className="hover:underline"
+                  >
+                    {formatMetric(needsReview, 'needs review')} on Text
+                  </Link>
+                ) : (
+                  'no review flags'
+                )
+              }
+            />
+          </ol>
+        </div>
         <JobSummary
           title="Segmentation Job"
           job={diagnostics?.latestSegmentationJob ?? null}
@@ -86,7 +68,7 @@ function RouteComponent() {
           title="Attribution Job"
           job={diagnostics?.latestAttributionJob ?? null}
         />
-      </div>
+      </section>
     </div>
   )
 }
@@ -98,7 +80,7 @@ function PipelineStage({
 }: {
   label: string
   status: string
-  detail: string
+  detail: ReactNode
 }) {
   return (
     <li className="grid gap-2 sm:grid-cols-[10rem_9rem_1fr]">
@@ -129,7 +111,7 @@ function JobSummary({
       {!job ? (
         <p className="text-foreground/50">No job recorded.</p>
       ) : (
-        <dl className="grid gap-2 border-y py-5 sm:grid-cols-[9rem_1fr]">
+        <dl className="grid gap-2 border-t py-5 sm:grid-cols-[9rem_1fr]">
           <dt className="text-foreground/50">Status</dt>
           <dd>{job.status}</dd>
           <dt className="text-foreground/50">Updated</dt>

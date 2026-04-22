@@ -16,10 +16,17 @@ import {
   preloadDocumentSpans,
   useBookDocuments,
   useBooks,
+  useDocumentDiagnostics,
   useDocumentSpans,
 } from '~/db-collections'
 import { deleteDocument } from '~/db/documents'
-import { formatDate, formatSpanCount, formatTextLength } from '~/lib/utils'
+import {
+  cn,
+  countNeedsReview,
+  formatDate,
+  formatSpanCount,
+  formatTextLength,
+} from '~/lib/utils'
 
 export const Route = createFileRoute('/library/$bookSlug/$documentId')({
   ssr: false,
@@ -49,8 +56,11 @@ function RouteComponent() {
   const books = useBooks()
   const chapters = useBookDocuments(bookSlug)
   const spans = useDocumentSpans(bookSlug, documentId)
+  const diagnostics = useDocumentDiagnostics(bookSlug, documentId)
   const book = books.find((item) => item.slug === bookSlug)
   const chapter = chapters.find((item) => item.id === documentId)
+  const needsReview =
+    diagnostics?.attributionCounts.needsReview ?? countNeedsReview(spans)
 
   if (!book || !chapter) {
     return (
@@ -127,6 +137,7 @@ function RouteComponent() {
             <DocumentNavLink
               to="/library/$bookSlug/$documentId/text"
               label="Text"
+              attentionCount={needsReview}
             />
             <DocumentNavLink
               to="/library/$bookSlug/$documentId/synthesis"
@@ -171,6 +182,7 @@ function RouteComponent() {
 function DocumentNavLink({
   to,
   label,
+  attentionCount = 0,
 }: {
   to:
     | '/library/$bookSlug/$documentId'
@@ -178,6 +190,7 @@ function DocumentNavLink({
     | '/library/$bookSlug/$documentId/text'
     | '/library/$bookSlug/$documentId/synthesis'
   label: string
+  attentionCount?: number
 }) {
   const { bookSlug, documentId } = Route.useParams()
 
@@ -189,9 +202,15 @@ function DocumentNavLink({
       activeProps={{
         className: 'bg-orange-950 text-orange-500 border-orange-950',
       }}
-      className="rounded-full border border-orange-900 px-4 py-2 w-fit font-serif text-xl transition-colors duration-150 ease-in-out hover:border-orange-950 hover:bg-orange-950 hover:text-orange-500"
+      className={cn(
+        'rounded-full border border-orange-900 px-4 py-2 w-fit font-serif text-xl transition-colors duration-150 ease-in-out hover:border-orange-950 hover:bg-orange-950 hover:text-orange-500',
+        attentionCount > 0 && 'border-orange-950',
+      )}
     >
       {label}
+      {attentionCount > 0 && (
+        <span className="ml-2 text-base">({attentionCount})</span>
+      )}
     </Link>
   )
 }
