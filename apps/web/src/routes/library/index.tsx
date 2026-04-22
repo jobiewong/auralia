@@ -1,6 +1,11 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { createFileRoute, Link } from '@tanstack/react-router'
+import { useServerFn } from '@tanstack/react-start'
 
+import { DeleteConfirmationDialog } from '~/components/delete-confirmation-dialog'
+import { ArrowLeft } from '~/components/icons/arrow-left'
 import { preloadBooks, useBooks } from '~/db-collections'
+import { deleteWork } from '~/db/works'
 
 export const Route = createFileRoute('/library/')({
   ssr: false,
@@ -9,15 +14,21 @@ export const Route = createFileRoute('/library/')({
 })
 
 function RouteComponent() {
+  const queryClient = useQueryClient()
+  const deleteWorkFn = useServerFn(deleteWork)
   const books = useBooks()
 
   return (
     <main className="page-wrap px-4 pb-8 pt-14">
       <section className="rise-in relative overflow-hidden px-6 py-10 sm:px-10 sm:py-14">
-        <p className="mb-4 font-serif text-xl">Library</p>
-        <h1 className="display-title mb-5 max-w-4xl text-4xl leading-[1.02] font-black tracking-tight sm:text-6xl lg:text-8xl font-decorative">
-          All Books
-        </h1>
+        <h1 className="display-title mb-8">Library</h1>
+      </section>
+      <section className="px-6 pb-8 sm:px-10">
+        <nav className="flex flex-wrap gap-4">
+          <Link to="/new-book" className="nav-link">
+            New Book
+          </Link>
+        </nav>
       </section>
       <section className="px-6 py-8 sm:px-10">
         {books.length === 0 ? (
@@ -25,21 +36,36 @@ function RouteComponent() {
             No books yet.
           </p>
         ) : (
-          <ul className="divide-y divide-orange-900/35 border-y border-orange-900/35">
+          <ul className="flex flex-col gap-2">
             {books.map((book) => (
-              <li key={book.id}>
+              <li
+                key={book.id}
+                className="flex items-center justify-between font-serif"
+              >
                 <Link
                   to="/library/$bookSlug"
                   params={{ bookSlug: book.slug }}
-                  className="grid gap-2 py-5 font-serif hover:underline sm:grid-cols-[1fr_auto] sm:items-end"
+                  className="hover:underline"
                 >
-                  <span className="text-2xl leading-tight sm:text-4xl">
-                    {book.title}
-                  </span>
-                  <span className="text-sm uppercase tracking-normal text-foreground/60 sm:text-base">
-                    {book.sourceType} / updated {formatDate(book.updatedAt)}
-                  </span>
+                  <p className="leading-tight">{book.title}</p>
                 </Link>
+                <div className="flex items-center gap-4">
+                  <p className="text-sm tracking-normal text-foreground/50 sm:text-base">
+                    {book.sourceType} / updated {formatDate(book.updatedAt)}
+                  </p>
+                  <DeleteConfirmationDialog
+                    title="Delete work"
+                    description={`Delete ${book.title} and all associated chapters, spans, jobs, and mappings? This cannot be undone.`}
+                    triggerLabel="Delete"
+                    confirmLabel="Delete Work"
+                    onConfirm={async () => {
+                      await deleteWorkFn({ data: { workId: book.id } })
+                      await queryClient.invalidateQueries({
+                        queryKey: ['books'],
+                      })
+                    }}
+                  />
+                </div>
               </li>
             ))}
           </ul>

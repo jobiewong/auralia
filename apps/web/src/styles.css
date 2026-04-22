@@ -1,10 +1,17 @@
-@import url('https://fonts.googleapis.com/css2?family=Jacquard+12&family=Manrope:wght@200..800&family=Quintessential&family=UnifrakturMaguntia&display=swap');
+@import url('https://fonts.googleapis.com/css2?Manrope:wght@200..800&family=Quintessential&display=swap');
 @import 'tailwindcss';
 @plugin '@tailwindcss/typography';
 
 @import 'tw-animate-css';
 
 @custom-variant dark (&:is(.dark *));
+
+@font-face {
+  font-family: 'ED Fairville';
+  src: url('/fonts/ED Fairville-Regular.woff') format('woff');
+  font-weight: 400;
+  font-style: normal;
+}
 
 :root {
   --background: oklch(70.5% 0.213 47.604);
@@ -23,7 +30,7 @@
   --accent-foreground: oklch(0.21 0.006 285.885);
   --destructive: oklch(0.577 0.245 27.325);
   --destructive-foreground: oklch(0.577 0.245 27.325);
-  --border: oklch(0.92 0.004 286.32);
+  --border: oklch(26.6% 0.079 36.259 / 0.15);
   --input: oklch(0.92 0.004 286.32);
   --ring: oklch(0.871 0.006 286.286);
   --chart-1: oklch(0.646 0.222 41.116);
@@ -44,9 +51,8 @@
 
 @theme inline {
   --font-sans: 'Manrope', ui-sans-serif, system-ui, sans-serif;
-  --font-display: 'Jacquard 12', ui-sans-serif, system-ui, sans-serif;
   --font-handwriting: 'Quintessential', ui-sans-serif, system-ui, sans-serif;
-  --font-decorative: 'UnifrakturMaguntia', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'ED Fairville', ui-sans-serif, system-ui, sans-serif;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -93,7 +99,7 @@ body,
 
 body {
   margin: 0;
-  font-family: var(--font-sans);
+  font-family: var(--font-serif);
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -106,5 +112,17 @@ body {
   body {
     background-color: var(--background);
     color: var(--foreground);
+  }
+}
+
+@layer components {
+  .page-wrap {
+    @apply px-4 pb-8 pt-14;
+  }
+  .display-title {
+    @apply text-4xl leading-[1.02] font-black tracking-tight sm:text-6xl lg:text-8xl font-display;
+  }
+  .nav-link {
+    @apply w-fit rounded-full flex items-center gap-2 border border-orange-900 px-4 py-2 font-serif text-xl transition-colors duration-150 ease-in-out hover:border-orange-950 hover:bg-orange-950 hover:text-orange-500;
   }
 }

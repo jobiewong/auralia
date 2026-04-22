@@ -20,6 +20,7 @@ import { Route as LibraryBookSlugSynthesisIndexRouteImport } from './routes/libr
 import { Route as LibraryBookSlugReviewIndexRouteImport } from './routes/library/$bookSlug/review/index'
 import { Route as LibraryBookSlugPipelineIndexRouteImport } from './routes/library/$bookSlug/pipeline/index'
 import { Route as LibraryBookSlugCastIndexRouteImport } from './routes/library/$bookSlug/cast/index'
+import { Route as LibraryBookSlugDocumentIdIndexRouteImport } from './routes/library/$bookSlug/$documentId/index'
 
 const AboutRoute = AboutRouteImport.update({
   id: '/about',
@@ -82,6 +83,12 @@ const LibraryBookSlugCastIndexRoute =
     path: '/library/$bookSlug/cast/',
     getParentRoute: () => rootRouteImport,
   } as any)
+const LibraryBookSlugDocumentIdIndexRoute =
+  LibraryBookSlugDocumentIdIndexRouteImport.update({
+    id: '/library/$bookSlug/$documentId/',
+    path: '/library/$bookSlug/$documentId/',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -89,6 +96,7 @@ export interface FileRoutesByFullPath {
   '/library/': typeof LibraryIndexRoute
   '/new-book/': typeof NewBookIndexRoute
   '/library/$bookSlug/': typeof LibraryBookSlugIndexRoute
+  '/library/$bookSlug/$documentId/': typeof LibraryBookSlugDocumentIdIndexRoute
   '/library/$bookSlug/cast/': typeof LibraryBookSlugCastIndexRoute
   '/library/$bookSlug/pipeline/': typeof LibraryBookSlugPipelineIndexRoute
   '/library/$bookSlug/review/': typeof LibraryBookSlugReviewIndexRoute
@@ -102,6 +110,7 @@ export interface FileRoutesByTo {
   '/library': typeof LibraryIndexRoute
   '/new-book': typeof NewBookIndexRoute
   '/library/$bookSlug': typeof LibraryBookSlugIndexRoute
+  '/library/$bookSlug/$documentId': typeof LibraryBookSlugDocumentIdIndexRoute
   '/library/$bookSlug/cast': typeof LibraryBookSlugCastIndexRoute
   '/library/$bookSlug/pipeline': typeof LibraryBookSlugPipelineIndexRoute
   '/library/$bookSlug/review': typeof LibraryBookSlugReviewIndexRoute
@@ -116,6 +125,7 @@ export interface FileRoutesById {
   '/library/': typeof LibraryIndexRoute
   '/new-book/': typeof NewBookIndexRoute
   '/library/$bookSlug/': typeof LibraryBookSlugIndexRoute
+  '/library/$bookSlug/$documentId/': typeof LibraryBookSlugDocumentIdIndexRoute
   '/library/$bookSlug/cast/': typeof LibraryBookSlugCastIndexRoute
   '/library/$bookSlug/pipeline/': typeof LibraryBookSlugPipelineIndexRoute
   '/library/$bookSlug/review/': typeof LibraryBookSlugReviewIndexRoute
@@ -131,6 +141,7 @@ export interface FileRouteTypes {
     | '/library/'
     | '/new-book/'
     | '/library/$bookSlug/'
+    | '/library/$bookSlug/$documentId/'
     | '/library/$bookSlug/cast/'
     | '/library/$bookSlug/pipeline/'
     | '/library/$bookSlug/review/'
@@ -144,6 +155,7 @@ export interface FileRouteTypes {
     | '/library'
     | '/new-book'
     | '/library/$bookSlug'
+    | '/library/$bookSlug/$documentId'
     | '/library/$bookSlug/cast'
     | '/library/$bookSlug/pipeline'
     | '/library/$bookSlug/review'
@@ -157,6 +169,7 @@ export interface FileRouteTypes {
     | '/library/'
     | '/new-book/'
     | '/library/$bookSlug/'
+    | '/library/$bookSlug/$documentId/'
     | '/library/$bookSlug/cast/'
     | '/library/$bookSlug/pipeline/'
     | '/library/$bookSlug/review/'
@@ -171,6 +184,7 @@ export interface RootRouteChildren {
   LibraryIndexRoute: typeof LibraryIndexRoute
   NewBookIndexRoute: typeof NewBookIndexRoute
   LibraryBookSlugIndexRoute: typeof LibraryBookSlugIndexRoute
+  LibraryBookSlugDocumentIdIndexRoute: typeof LibraryBookSlugDocumentIdIndexRoute
   LibraryBookSlugCastIndexRoute: typeof LibraryBookSlugCastIndexRoute
   LibraryBookSlugPipelineIndexRoute: typeof LibraryBookSlugPipelineIndexRoute
   LibraryBookSlugReviewIndexRoute: typeof LibraryBookSlugReviewIndexRoute
@@ -258,6 +272,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LibraryBookSlugCastIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/library/$bookSlug/$documentId/': {
+      id: '/library/$bookSlug/$documentId/'
+      path: '/library/$bookSlug/$documentId'
+      fullPath: '/library/$bookSlug/$documentId/'
+      preLoaderRoute: typeof LibraryBookSlugDocumentIdIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -267,6 +288,7 @@ const rootRouteChildren: RootRouteChildren = {
   LibraryIndexRoute: LibraryIndexRoute,
   NewBookIndexRoute: NewBookIndexRoute,
   LibraryBookSlugIndexRoute: LibraryBookSlugIndexRoute,
+  LibraryBookSlugDocumentIdIndexRoute: LibraryBookSlugDocumentIdIndexRoute,
   LibraryBookSlugCastIndexRoute: LibraryBookSlugCastIndexRoute,
   LibraryBookSlugPipelineIndexRoute: LibraryBookSlugPipelineIndexRoute,
   LibraryBookSlugReviewIndexRoute: LibraryBookSlugReviewIndexRoute,

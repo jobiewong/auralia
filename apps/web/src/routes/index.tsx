@@ -15,11 +15,9 @@ function App() {
   const hiddenCount = getHiddenBookCount(books.length, visibleBooks.length)
 
   return (
-    <main className="page-wrap px-4 pb-8 pt-14">
+    <main className="page-wrap">
       <section className="rise-in relative overflow-hidden px-6 py-10 sm:px-10 sm:py-14">
-        <h1 className="display-title mb-5 max-w-3xl text-4xl leading-[1.02] font-black tracking-tight sm:text-6xl lg:text-8xl font-decorative">
-          Auralia
-        </h1>
+        <h1 className="display-title mb-8">Auralia</h1>
         <p className="mb-8 max-w-xl text-base sm:text-lg font-serif">
           Generate fully-voiced audiobooks from your own text or AO3
           publications using entirely local AI.
