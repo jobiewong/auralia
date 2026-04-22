@@ -52,6 +52,10 @@ const ListDocumentSpansInput = z.object({
   documentId: z.string().min(1),
 })
 
+const GetDocumentRouteTargetInput = z.object({
+  documentId: z.string().min(1),
+})
+
 const UpdateSpanAttributionInput = z.object({
   spanId: z.string().min(1),
   speaker: z.string().trim().min(1),
@@ -110,6 +114,32 @@ export const listDocumentSpans = createServerFn({ method: 'GET' })
       )
       .orderBy(asc(spans.start), asc(spans.end))
       .all()
+  })
+
+export const getDocumentRouteTarget = createServerFn({ method: 'GET' })
+  .inputValidator(GetDocumentRouteTargetInput)
+  .handler(async ({ data }) => {
+    const [{ db }, { documents, works }, { eq }] = await Promise.all([
+      import('./index.ts'),
+      import('./schema.ts'),
+      import('drizzle-orm'),
+    ])
+
+    const row = db
+      .select({
+        bookSlug: works.slug,
+        documentId: documents.id,
+      })
+      .from(documents)
+      .innerJoin(works, eq(documents.workId, works.id))
+      .where(eq(documents.id, data.documentId))
+      .get()
+
+    if (!row) {
+      throw new Error('Imported document was not found in the library')
+    }
+
+    return row
   })
 
 export const getDocumentDiagnostics = createServerFn({ method: 'GET' })

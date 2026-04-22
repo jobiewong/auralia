@@ -1,7 +1,14 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
+import { useState } from 'react'
+import { Play } from '~/components/icons/play'
+import { ProgressArc } from '~/components/ui/progress-arc'
 
+import { Button } from '~/components/ui/button'
 import { useDocumentDiagnostics, useDocumentSpans } from '~/db-collections'
+import { formatElapsed, useElapsedSeconds } from '~/hooks/use-elapsed-seconds'
+import { runAttribution, runSegmentation } from '~/lib/pipeline-api'
 import {
   countReviewSpans,
   formatDate,
@@ -15,9 +22,73 @@ export const Route = createFileRoute('/library/$bookSlug/$documentId/')({
 
 function RouteComponent() {
   const { bookSlug, documentId } = Route.useParams()
+  const queryClient = useQueryClient()
   const spans = useDocumentSpans(bookSlug, documentId)
   const diagnostics = useDocumentDiagnostics(bookSlug, documentId)
   const reviewCount = countReviewSpans(spans)
+  const [runningStage, setRunningStage] = useState<
+    'segmentation' | 'attribution' | null
+  >(null)
+  const [startedAt, setStartedAt] = useState<number | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const elapsed = useElapsedSeconds(startedAt)
+  const hasCompletedSegmentation =
+    diagnostics?.latestSegmentationJob?.status === 'completed' ||
+    (diagnostics?.spanCounts.total ?? 0) > 0 ||
+    spans.length > 0
+  const hasCompletedAttribution =
+    diagnostics?.latestAttributionJob?.status === 'completed'
+  const canRunAttribution = hasCompletedSegmentation && runningStage === null
+
+  async function refreshDocumentState() {
+    await Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: ['document-spans', bookSlug, documentId],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ['document-diagnostics', bookSlug, documentId],
+      }),
+      queryClient.invalidateQueries({ queryKey: ['book-documents', bookSlug] }),
+      queryClient.invalidateQueries({ queryKey: ['books'] }),
+    ])
+  }
+
+  async function handleRunSegmentation() {
+    setRunningStage('segmentation')
+    setStartedAt(Date.now())
+    setError(null)
+
+    try {
+      await runSegmentation(documentId)
+      await refreshDocumentState()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Segmentation failed')
+    } finally {
+      setRunningStage(null)
+      setStartedAt(null)
+    }
+  }
+
+  async function handleRunAttribution() {
+    if (!hasCompletedSegmentation) {
+      setError('Run segmentation before attribution.')
+      return
+    }
+
+    setRunningStage('attribution')
+    setStartedAt(Date.now())
+    setError(null)
+
+    try {
+      await runAttribution(documentId)
+      await refreshDocumentState()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Attribution failed')
+    } finally {
+      setRunningStage(null)
+      setStartedAt(null)
+    }
+  }
 
   return (
     <div className="grid gap-12">
@@ -41,23 +112,63 @@ function RouteComponent() {
               detail="speaker data available on Text"
             />
             <PipelineStage
-            label="Review"
-            status={reviewCount > 0 ? 'needs review' : 'clear'}
-            detail={
-              reviewCount > 0 ? (
-                <Link
-                  to="/library/$bookSlug/$documentId/text"
-                  params={{ bookSlug, documentId }}
-                  className="hover:underline"
-                >
-                  {formatMetric(reviewCount, 'needs review')} on Text
-                </Link>
-              ) : (
+              label="Review"
+              status={reviewCount > 0 ? 'needs review' : 'clear'}
+              detail={
+                reviewCount > 0 ? (
+                  <Link
+                    to="/library/$bookSlug/$documentId/text"
+                    params={{ bookSlug, documentId }}
+                    className="hover:underline"
+                  >
+                    {formatMetric(reviewCount, 'needs review')} on Text
+                  </Link>
+                ) : (
                   'no review flags'
                 )
               }
             />
           </ol>
+          <div className="mt-8 grid gap-4 border-y py-5 font-serif">
+            <div className="flex flex-wrap items-center gap-4">
+              <Button
+                type="button"
+                size="lg"
+                disabled={runningStage !== null || hasCompletedSegmentation}
+                onClick={handleRunSegmentation}
+                className="min-w-52"
+              >
+                <Play className="size-5" />
+                {hasCompletedSegmentation ? 'Segmented' : 'Run Segmentation'}
+              </Button>
+              <Button
+                type="button"
+                size="lg"
+                disabled={!canRunAttribution || hasCompletedAttribution}
+                onClick={handleRunAttribution}
+                className="min-w-52"
+              >
+                <Play className="size-5" />
+                {hasCompletedAttribution ? 'Attributed' : 'Run Attribution'}
+              </Button>
+              {runningStage ? (
+                <p className="flex items-center gap-2 text-lg text-foreground/60">
+                  <ProgressArc className="size-5" />
+                  {runningStage} running for {formatElapsed(elapsed)}
+                </p>
+              ) : null}
+            </div>
+            {!hasCompletedSegmentation ? (
+              <p className="text-foreground/60">
+                Attribution unlocks after segmentation has completed.
+              </p>
+            ) : null}
+            {error ? (
+              <p className="text-orange-950" role="alert">
+                {error}
+              </p>
+            ) : null}
+          </div>
         </div>
         <JobSummary
           title="Segmentation Job"

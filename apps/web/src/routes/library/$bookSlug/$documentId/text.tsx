@@ -2,6 +2,7 @@ import { useHotkey } from '@tanstack/react-hotkeys'
 import { useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import { useServerFn } from '@tanstack/react-start'
+import { Clock } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useMemo, useState } from 'react'
 import { BracketButton } from '~/components/bracket-button'
@@ -13,6 +14,8 @@ import { ConfirmationButton } from '~/components/ui/confirmation-button'
 import type { DocumentSpan } from '~/db-collections'
 import { useDocumentDiagnostics, useDocumentSpans } from '~/db-collections'
 import { updateSpanAttribution } from '~/db/documents'
+import { formatElapsed, useElapsedSeconds } from '~/hooks/use-elapsed-seconds'
+import { runAttribution, runSegmentation } from '~/lib/pipeline-api'
 import {
   cn,
   countAttributed,
@@ -41,6 +44,12 @@ function RouteComponent() {
   const diagnostics = useDocumentDiagnostics(bookSlug, documentId)
   const [activeSpanId, setActiveSpanId] = useState<string | null>(null)
   const [filter, setFilter] = useState<SpanFilter>('all')
+  const [runningStage, setRunningStage] = useState<
+    'segmentation' | 'attribution' | null
+  >(null)
+  const [startedAt, setStartedAt] = useState<number | null>(null)
+  const [pipelineError, setPipelineError] = useState<string | null>(null)
+  const elapsed = useElapsedSeconds(startedAt)
   const speakerOptions = useMemo(
     () => getSpeakerOptions(diagnostics?.document.roster, spans),
     [diagnostics?.document.roster, spans],
@@ -51,13 +60,66 @@ function RouteComponent() {
   )
   const reviewSpans = spans.filter(isReviewSpan)
   const reviewCount = countReviewSpans(spans)
+  const hasCompletedSegmentation =
+    diagnostics?.latestSegmentationJob?.status === 'completed' ||
+    (diagnostics?.spanCounts.total ?? 0) > 0 ||
+    spans.length > 0
+  const hasCompletedAttribution =
+    diagnostics?.latestAttributionJob?.status === 'completed'
+  const canRunAttribution = hasCompletedSegmentation && runningStage === null
 
-  function handleRunSegmentation() {
-    console.log('run segmentation')
+  async function refreshDocumentState() {
+    await Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: ['document-spans', bookSlug, documentId],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ['document-diagnostics', bookSlug, documentId],
+      }),
+      queryClient.invalidateQueries({ queryKey: ['book-documents', bookSlug] }),
+      queryClient.invalidateQueries({ queryKey: ['books'] }),
+    ])
   }
 
-  function handleRunAttribution() {
-    console.log('run attribution')
+  async function handleRunSegmentation() {
+    setRunningStage('segmentation')
+    setStartedAt(Date.now())
+    setPipelineError(null)
+
+    try {
+      await runSegmentation(documentId)
+      await refreshDocumentState()
+    } catch (err) {
+      setPipelineError(
+        err instanceof Error ? err.message : 'Segmentation failed',
+      )
+    } finally {
+      setRunningStage(null)
+      setStartedAt(null)
+    }
+  }
+
+  async function handleRunAttribution() {
+    if (!hasCompletedSegmentation) {
+      setPipelineError('Run segmentation before attribution.')
+      return
+    }
+
+    setRunningStage('attribution')
+    setStartedAt(Date.now())
+    setPipelineError(null)
+
+    try {
+      await runAttribution(documentId)
+      await refreshDocumentState()
+    } catch (err) {
+      setPipelineError(
+        err instanceof Error ? err.message : 'Attribution failed',
+      )
+    } finally {
+      setRunningStage(null)
+      setStartedAt(null)
+    }
   }
 
   async function handleSaveAttribution({
@@ -162,24 +224,42 @@ function RouteComponent() {
                 'unknown',
               )}
             </dd>
-            <dt className="text-foreground/50">Review</dt>
-            <dd>{formatMetric(reviewCount, 'needs review')}</dd>
           </dl>
         </div>
         <div className="mt-4 flex gap-4">
           <ConfirmationButton
             className="w-48"
+            disabled={runningStage !== null || hasCompletedSegmentation}
             onLongPress={handleRunSegmentation}
           >
-            <Play className="size-4" /> Run Segmentation
+            <Play className="size-4" />{' '}
+            {hasCompletedSegmentation ? 'Segmented' : 'Run Segmentation'}
           </ConfirmationButton>
           <ConfirmationButton
             className="w-43"
+            disabled={!canRunAttribution || hasCompletedAttribution}
             onLongPress={handleRunAttribution}
           >
-            <Play className="size-4" /> Run Attribution
+            <Play className="size-4" />{' '}
+            {hasCompletedAttribution ? 'Attributed' : 'Run Attribution'}
           </ConfirmationButton>
+          {runningStage ? (
+            <p className="flex items-center gap-2 font-serif text-lg text-foreground/60">
+              <Clock className="size-5" />
+              {runningStage} running for {formatElapsed(elapsed)}
+            </p>
+          ) : null}
         </div>
+        {!hasCompletedSegmentation ? (
+          <p className="mt-3 font-serif text-foreground/60">
+            Attribution unlocks after segmentation has completed.
+          </p>
+        ) : null}
+        {pipelineError ? (
+          <p className="mt-3 font-serif text-orange-950" role="alert">
+            {pipelineError}
+          </p>
+        ) : null}
       </section>
 
       <section className="flex flex-wrap items-center gap-4 font-serif sticky -mx-2 px-2 py-1 top-4 bg-background">

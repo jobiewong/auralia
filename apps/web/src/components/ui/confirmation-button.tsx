@@ -1,15 +1,18 @@
 import { AnimatePresence, motion } from 'motion/react'
+import type { ReactNode } from 'react'
 import { useState } from 'react'
 import { useLongPress } from 'react-aria/useLongPress'
 import { cn } from '~/lib/utils'
 
 export function ConfirmationButton({
   children,
+  disabled = false,
   onClick,
   onLongPress,
   className,
 }: {
-  children: React.ReactNode
+  children: ReactNode
+  disabled?: boolean
   onClick?: () => void
   onLongPress: () => void
   className?: string
@@ -34,9 +37,10 @@ export function ConfirmationButton({
   return (
     <button
       type="button"
+      disabled={disabled}
       onClick={onClick}
       className={cn(
-        'group relative isolate overflow-hidden rounded-full border border-orange-950 text-orange-950 hover:bg-orange-950/10 transition-colors duration-150 ease-in-out cursor-pointer',
+        'group relative isolate overflow-hidden rounded-full border border-orange-950 text-orange-950 hover:bg-orange-950/10 transition-colors duration-150 ease-in-out cursor-pointer disabled:pointer-events-none disabled:opacity-50',
         className,
       )}
       {...longPressProps}
