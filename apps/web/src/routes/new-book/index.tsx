@@ -10,7 +10,7 @@ import { Button } from '~/components/ui/button'
 import { ProgressArc } from '~/components/ui/progress-arc'
 import { getDocumentRouteTarget } from '~/db/documents'
 import { formatElapsed, useElapsedSeconds } from '~/hooks/use-elapsed-seconds'
-import { ingestAo3Chapter } from '~/lib/pipeline-api'
+import { ingestAo3Chapter, runSegmentation } from '~/lib/pipeline-api'
 
 export const Route = createFileRoute('/new-book/')({
   ssr: false,
@@ -44,13 +44,13 @@ function RouteComponent() {
       const routeTarget = await getRouteTarget({
         data: { documentId: result.cleaned_document.id },
       })
-      console.log('🚀 ~ handleSubmit ~ routeTarget:', routeTarget)
 
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['books'] }),
         queryClient.invalidateQueries({
           queryKey: ['book-documents', routeTarget.bookSlug],
         }),
+        runSegmentation(result.cleaned_document.id),
       ])
       await navigate({
         to: '/library/$bookSlug/$documentId',
