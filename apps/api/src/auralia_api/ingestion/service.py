@@ -67,8 +67,10 @@ def _ao3_source_metadata(chapter: AO3Chapter) -> dict:
         "authors": [asdict(a) for a in chapter.authors],
         "chapter_id": chapter.chapter_id,
         "chapter_title": chapter.title,
+        "chapter_number": chapter.chapter_number,
         "previous_chapter_url": chapter.previous_chapter_url,
         "next_chapter_url": chapter.next_chapter_url,
+        "summary": chapter.summary,
     }
 
 

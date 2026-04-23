@@ -6,6 +6,28 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+export function parseDocumentSourceMetadata(sourceMetadata: string | null) {
+  if (sourceMetadata === null) {
+    return null
+  }
+  try {
+    return JSON.parse(sourceMetadata) as {
+      source: string
+      work_id: string
+      work_title: string
+      authors: { name: string; url: string }[]
+      chapter_id: string
+      chapter_title: string
+      chapter_number: number | undefined
+      previous_chapter_url: string | null
+      next_chapter_url: string | null
+      summary: string | null
+    }
+  } catch {
+    return null
+  }
+}
+
 export function parseWorkSourceMetadata(sourceMetadata: string | null) {
   if (sourceMetadata === null) {
     return null

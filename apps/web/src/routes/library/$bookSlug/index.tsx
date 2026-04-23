@@ -14,6 +14,7 @@ import {
   formatDate,
   formatSpanCount,
   formatTextLength,
+  parseDocumentSourceMetadata,
   parseWorkSourceMetadata,
 } from '~/lib/utils'
 
@@ -109,13 +110,20 @@ function RouteComponent() {
             <p className="font-serif text-foreground/50">No chapters yet.</p>
           ) : (
             <ol className="space-y-2">
-              {chapters.map((chapter, index) => (
+              {chapters.map((chapter, index) => {
+                const metadata = parseDocumentSourceMetadata(
+                  chapter.sourceMetadata,
+                )
+                const chapterNumber =
+                  metadata?.chapter_number ?? index + 1
+
+                return (
                 <li
                   key={chapter.id}
                   className="grid gap-2 font-serif sm:grid-cols-[4rem_1fr_auto_auto] sm:items-baseline"
                 >
                   <p className="text-foreground/50">
-                    {String(index + 1).padStart(2, '0')}
+                    {String(chapterNumber).padStart(2, '0')}
                   </p>
                   <div>
                     <Link
@@ -156,7 +164,8 @@ function RouteComponent() {
                     />
                   </div>
                 </li>
-              ))}
+              )
+            })}
             </ol>
           )}
         </div>
