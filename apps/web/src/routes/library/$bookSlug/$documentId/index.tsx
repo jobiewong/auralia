@@ -129,7 +129,7 @@ function RouteComponent() {
               }
             />
           </ol>
-          <div className="mt-8 grid gap-4 border-y py-5 font-serif">
+          <div className="mt-8 grid gap-4 border-t py-5 font-serif">
             <div className="flex flex-wrap items-center gap-4">
               <Button
                 type="button"

@@ -8,6 +8,7 @@ import {
 import { useServerFn } from '@tanstack/react-start'
 
 import { DeleteConfirmationDialog } from '~/components/delete-confirmation-dialog'
+import { EditTitleDialog } from '~/components/edit-title-dialog'
 import { ArrowLeft } from '~/components/icons/arrow-left'
 import {
   preloadBookDocuments,
@@ -18,7 +19,7 @@ import {
   useBooks,
   useDocumentSpans,
 } from '~/db-collections'
-import { deleteDocument } from '~/db/documents'
+import { deleteDocument, updateDocumentTitle } from '~/db/documents'
 import {
   cn,
   countReviewSpans,
@@ -52,6 +53,7 @@ function RouteComponent() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const deleteDocumentFn = useServerFn(deleteDocument)
+  const updateDocumentTitleFn = useServerFn(updateDocumentTitle)
   const books = useBooks()
   const chapters = useBookDocuments(bookSlug)
   const spans = useDocumentSpans(bookSlug, documentId)
@@ -142,32 +144,60 @@ function RouteComponent() {
             />
           </nav>
 
-          <DeleteConfirmationDialog
-            className="rounded-full border border-orange-900 px-4! py-2! w-fit font-serif text-xl transition-colors duration-150 ease-in-out hover:border-orange-950 hover:bg-orange-950 hover:text-orange-500 hover:no-underline"
-            title="Delete chapter"
-            description={`Delete ${chapter.title || chapter.chapterId} and all associated spans, jobs, and mappings? This cannot be undone.`}
-            triggerLabel="Delete Chapter"
-            confirmLabel="Delete Chapter"
-            onConfirm={async () => {
-              await deleteDocumentFn({ data: { documentId: chapter.id } })
-              await Promise.all([
-                queryClient.invalidateQueries({ queryKey: ['books'] }),
-                queryClient.invalidateQueries({
-                  queryKey: ['book-documents', book.slug],
-                }),
-                queryClient.invalidateQueries({
-                  queryKey: ['document-spans', book.slug, chapter.id],
-                }),
-                queryClient.invalidateQueries({
-                  queryKey: ['document-diagnostics', book.slug, chapter.id],
-                }),
-              ])
-              await navigate({
-                to: '/library/$bookSlug',
-                params: { bookSlug: book.slug },
-              })
-            }}
-          />
+          <div className="flex flex-wrap gap-4">
+            <EditTitleDialog
+              dialogTitle="Edit Chapter Name"
+              description="Update the chapter title shown throughout the app."
+              fieldLabel="Chapter name"
+              triggerLabel="Edit Chapter Name"
+              submitLabel="Save Chapter Name"
+              defaultTitle={chapter.title || chapter.chapterId}
+              className="rounded-full border border-orange-900 px-4! py-2! w-fit font-serif text-xl transition-colors duration-150 ease-in-out hover:border-orange-950 hover:bg-orange-950 hover:text-orange-500 hover:no-underline"
+              onSubmit={async ({ title }) => {
+                await updateDocumentTitleFn({
+                  data: { documentId: chapter.id, title },
+                })
+                await Promise.all([
+                  queryClient.invalidateQueries({ queryKey: ['books'] }),
+                  queryClient.invalidateQueries({
+                    queryKey: ['book-documents', book.slug],
+                  }),
+                  queryClient.invalidateQueries({
+                    queryKey: ['document-spans', book.slug, chapter.id],
+                  }),
+                  queryClient.invalidateQueries({
+                    queryKey: ['document-diagnostics', book.slug, chapter.id],
+                  }),
+                ])
+              }}
+            />
+            <DeleteConfirmationDialog
+              className="rounded-full border border-orange-900 px-4! py-2! w-fit font-serif text-xl transition-colors duration-150 ease-in-out hover:border-orange-950 hover:bg-orange-950 hover:text-orange-500 hover:no-underline"
+              title="Delete chapter"
+              description={`Delete ${chapter.title || chapter.chapterId} and all associated spans, jobs, and mappings? This cannot be undone.`}
+              triggerLabel="Delete Chapter"
+              confirmLabel="Delete Chapter"
+              onConfirm={async () => {
+                await deleteDocumentFn({ data: { documentId: chapter.id } })
+                await Promise.all([
+                  queryClient.invalidateQueries({ queryKey: ['books'] }),
+                  queryClient.invalidateQueries({
+                    queryKey: ['book-documents', book.slug],
+                  }),
+                  queryClient.invalidateQueries({
+                    queryKey: ['document-spans', book.slug, chapter.id],
+                  }),
+                  queryClient.invalidateQueries({
+                    queryKey: ['document-diagnostics', book.slug, chapter.id],
+                  }),
+                ])
+                await navigate({
+                  to: '/library/$bookSlug',
+                  params: { bookSlug: book.slug },
+                })
+              }}
+            />
+          </div>
         </div>
 
         <Outlet />

@@ -2,11 +2,17 @@ type ApiErrorBody = {
   detail?: unknown
 }
 
-export async function ingestAo3Chapter(url: string) {
+export async function ingestAo3Chapter(
+  url: string,
+  options?: { sourceId?: string },
+) {
   return postJson<{
     ingestion_job: { id: string; status: string }
     cleaned_document: { id: string }
-  }>('/api/ingest/ao3', { url })
+  }>('/api/ingest/ao3', {
+    url,
+    source_id: options?.sourceId,
+  })
 }
 
 export async function runSegmentation(documentId: string) {

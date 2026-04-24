@@ -32,13 +32,20 @@ export function parseWorkSourceMetadata(sourceMetadata: string | null) {
   if (sourceMetadata === null) {
     return null
   }
-  const json = JSON.parse(sourceMetadata) as {
-    source: string
-    work_id: string
-    work_title: string
-    authors: { name: string; url: string }[]
+  try {
+    return JSON.parse(sourceMetadata) as {
+      source: string
+      kind?: 'work' | 'series'
+      url?: string
+      work_id?: string
+      work_title?: string | null
+      authors?: { name: string; url: string }[]
+      series_id?: string
+      series_title?: string | null
+    }
+  } catch {
+    return null
   }
-  return json
 }
 
 export function formatDate(value: string) {

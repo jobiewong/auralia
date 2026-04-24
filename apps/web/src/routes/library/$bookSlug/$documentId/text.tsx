@@ -59,7 +59,6 @@ function RouteComponent() {
     [filter, spans],
   )
   const reviewSpans = spans.filter(isReviewSpan)
-  const reviewCount = countReviewSpans(spans)
   const hasCompletedSegmentation =
     diagnostics?.latestSegmentationJob?.status === 'completed' ||
     (diagnostics?.spanCounts.total ?? 0) > 0 ||

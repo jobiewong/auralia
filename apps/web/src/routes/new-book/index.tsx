@@ -1,15 +1,27 @@
+import { zodResolver } from '@hookform/resolvers/zod'
 import { useQueryClient } from '@tanstack/react-query'
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { useServerFn } from '@tanstack/react-start'
-import type { FormEvent } from 'react'
-import { useState } from 'react'
+import * as React from 'react'
+import { Controller, useForm } from 'react-hook-form'
 import { Book } from '~/components/icons/book'
 import { ExternalLink } from '~/components/icons/external-link'
 
 import { Button } from '~/components/ui/button'
+import {
+  Field,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from '~/components/ui/field'
+import { Input } from '~/components/ui/input'
 import { ProgressArc } from '~/components/ui/progress-arc'
 import { getDocumentRouteTarget } from '~/db/documents'
+import { createWork } from '~/db/works'
 import { formatElapsed, useElapsedSeconds } from '~/hooks/use-elapsed-seconds'
+import { getAo3WorkDraft, parseAo3Url } from '~/lib/ao3'
+import type { Ao3UrlFormValues } from '~/lib/forms'
+import { ao3UrlFormSchema } from '~/lib/forms'
 import { ingestAo3Chapter, runSegmentation } from '~/lib/pipeline-api'
 
 export const Route = createFileRoute('/new-book/')({
@@ -21,26 +33,49 @@ function RouteComponent() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const getRouteTarget = useServerFn(getDocumentRouteTarget)
-  const [url, setUrl] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [startedAt, setStartedAt] = useState<number | null>(null)
+  const createWorkFn = useServerFn(createWork)
+  const [startedAt, setStartedAt] = React.useState<number | null>(null)
+  const form = useForm<Ao3UrlFormValues>({
+    resolver: zodResolver(ao3UrlFormSchema),
+    defaultValues: {
+      url: '',
+    },
+  })
   const elapsed = useElapsedSeconds(startedAt)
   const isRunning = startedAt !== null
+  const parsedUrl = parseAo3Url(form.watch('url'))
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    const trimmedUrl = url.trim()
-
-    if (!trimmedUrl) {
-      setError('Paste an AO3 chapter URL first.')
-      return
-    }
-
-    setError(null)
+  async function handleSubmit(values: Ao3UrlFormValues) {
+    const trimmedUrl = values.url.trim()
+    const parsedTrimmedUrl = parseAo3Url(trimmedUrl)
     setStartedAt(Date.now())
 
     try {
-      const result = await ingestAo3Chapter(trimmedUrl)
+      const workDraft = getAo3WorkDraft(trimmedUrl)
+
+      if (workDraft) {
+        const work = await createWorkFn({ data: workDraft })
+
+        await queryClient.invalidateQueries({ queryKey: ['books'] })
+        setStartedAt(null)
+        await navigate({
+          to: '/library/$bookSlug',
+          params: { bookSlug: work.slug },
+        })
+        return
+      }
+
+      if (!parsedTrimmedUrl || parsedTrimmedUrl.kind !== 'chapter') {
+        form.setError('url', {
+          type: 'validate',
+          message:
+            'Paste an AO3 chapter, work, or series URL from archiveofourown.org.',
+        })
+        setStartedAt(null)
+        return
+      }
+
+      const result = await ingestAo3Chapter(parsedTrimmedUrl.url)
       const routeTarget = await getRouteTarget({
         data: { documentId: result.cleaned_document.id },
       })
@@ -52,13 +87,18 @@ function RouteComponent() {
         }),
         runSegmentation(result.cleaned_document.id),
       ])
+
+      setStartedAt(null)
       await navigate({
         to: '/library/$bookSlug/$documentId',
         params: routeTarget,
       })
     } catch (err) {
       setStartedAt(null)
-      setError(err instanceof Error ? err.message : 'Import failed')
+      form.setError('url', {
+        type: 'server',
+        message: err instanceof Error ? err.message : 'Import failed',
+      })
     }
   }
 
@@ -73,33 +113,42 @@ function RouteComponent() {
         </p>
         <h1 className="display-title mb-8">New Book</h1>
         <p className="max-w-2xl font-serif text-lg text-foreground/70">
-          Paste one AO3 chapter URL. Auralia will import it as a single-document
-          work, then open the document status page.
+          Paste an AO3 chapter, work, or series URL. Chapter links import the
+          first chapter and open it. Work and series links create an empty book
+          and open that instead.
         </p>
       </section>
 
       <section className="px-6 pb-12 sm:px-10">
         <form
-          onSubmit={handleSubmit}
+          noValidate
+          onSubmit={form.handleSubmit(handleSubmit)}
           className="grid max-w-4xl gap-6 border-t py-8 font-serif"
         >
-          <label className="grid gap-3">
-            <span className="text-xl">AO3 chapter URL</span>
-            <input
-              value={url}
-              onChange={(event) => setUrl(event.target.value)}
-              disabled={isRunning}
-              inputMode="url"
-              placeholder="https://archiveofourown.org/works/123/chapters/456"
-              className="w-full border border-orange-950/35 bg-transparent px-4 py-3 text-base outline-none transition focus:border-orange-950 focus:ring-2 focus:ring-orange-950/20 disabled:opacity-60 sm:text-lg"
+          <FieldGroup>
+            <Controller
+              name="url"
+              control={form.control}
+              render={({ field, fieldState }) => (
+                <Field data-invalid={fieldState.invalid}>
+                  <FieldLabel htmlFor="new-book-url">AO3 URL</FieldLabel>
+                  <Input
+                    {...field}
+                    id="new-book-url"
+                    disabled={isRunning}
+                    inputMode="url"
+                    placeholder="https://archiveofourown.org/works/123"
+                    aria-invalid={fieldState.invalid}
+                    autoComplete="off"
+                    className="h-auto border-orange-950/35 bg-transparent px-4 py-3 text-base focus-visible:border-orange-950 focus-visible:ring-orange-950/20 sm:text-lg"
+                  />
+                  {fieldState.invalid ? (
+                    <FieldError errors={[fieldState.error]} />
+                  ) : null}
+                </Field>
+              )}
             />
-          </label>
-
-          {error ? (
-            <p className="text-base text-orange-950" role="alert">
-              {error}
-            </p>
-          ) : null}
+          </FieldGroup>
 
           <div className="flex flex-wrap items-center gap-4">
             <Button
@@ -109,7 +158,11 @@ function RouteComponent() {
               className="min-w-56"
             >
               <Book className="size-5" />
-              {isRunning ? 'Importing' : 'Begin Pipeline'}
+              {isRunning
+                ? 'Working'
+                : parsedUrl?.kind === 'chapter'
+                  ? 'Import Chapter'
+                  : 'Create Book'}
             </Button>
             {isRunning ? (
               <p className="flex items-center gap-2 text-lg text-foreground/60">

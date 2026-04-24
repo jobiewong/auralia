@@ -1,6 +1,18 @@
 import { createServerFn } from '@tanstack/react-start'
 import { z } from 'zod'
 
+const CreateWorkInput = z.object({
+  title: z.string().trim().min(1),
+  sourceType: z.string().trim().min(1),
+  sourceId: z.string().trim().min(1),
+  sourceMetadata: z.string().nullable().default(null),
+})
+
+const UpdateWorkTitleInput = z.object({
+  workId: z.string().min(1),
+  title: z.string().trim().min(1),
+})
+
 export const listWorks = createServerFn({ method: 'GET' }).handler(async () => {
   const [{ db }, { works }, { desc }] = await Promise.all([
     import('./index.ts'),
@@ -24,6 +36,85 @@ export const listWorks = createServerFn({ method: 'GET' }).handler(async () => {
     .orderBy(desc(works.updatedAt))
     .all()
 })
+
+export const createWork = createServerFn({ method: 'POST' })
+  .inputValidator(CreateWorkInput)
+  .handler(async ({ data }) => {
+    const [{ randomUUID }, { db }, { works }, { and, eq }] = await Promise.all([
+      import('node:crypto'),
+      import('./index.ts'),
+      import('./schema.ts'),
+      import('drizzle-orm'),
+    ])
+
+    const existingWork = db
+      .select({
+        id: works.id,
+        slug: works.slug,
+      })
+      .from(works)
+      .where(
+        and(eq(works.sourceType, data.sourceType), eq(works.sourceId, data.sourceId)),
+      )
+      .get()
+
+    if (existingWork) {
+      return existingWork
+    }
+
+    const workId = `work_${randomUUID().replaceAll('-', '').slice(0, 12)}`
+    const baseSlug = slugify(data.title)
+    let slug = baseSlug
+    let suffix = 2
+
+    while (
+      db
+        .select({ slug: works.slug })
+        .from(works)
+        .where(eq(works.slug, slug))
+        .get()
+    ) {
+      slug = `${baseSlug}-${suffix}`
+      suffix += 1
+    }
+
+    db.insert(works)
+      .values({
+        id: workId,
+        slug,
+        title: data.title,
+        sourceType: data.sourceType,
+        sourceId: data.sourceId,
+        authors: null,
+        sourceMetadata: data.sourceMetadata,
+      })
+      .run()
+
+    return { id: workId, slug }
+  })
+
+export const updateWorkTitle = createServerFn({ method: 'POST' })
+  .inputValidator(UpdateWorkTitleInput)
+  .handler(async ({ data }) => {
+    const [{ db }, { works }, { eq }] = await Promise.all([
+      import('./index.ts'),
+      import('./schema.ts'),
+      import('drizzle-orm'),
+    ])
+
+    const now = new Date().toISOString()
+
+    const result = db
+      .update(works)
+      .set({
+        title: data.title.trim(),
+        updatedAt: now,
+      })
+      .where(eq(works.id, data.workId))
+      .run()
+
+    return { updated: result.changes }
+  })
 
 const DeleteWorkInput = z.object({
   workId: z.string().min(1),
@@ -116,3 +207,13 @@ export const deleteWork = createServerFn({ method: 'POST' })
       return { deleted: result.changes }
     })
   })
+
+function slugify(value: string) {
+  const slug = value
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+
+  return slug || 'work'
+}

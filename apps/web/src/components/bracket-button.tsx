@@ -23,6 +23,7 @@ export function BracketButton({
       onClick={onClick}
       className={cn(
         'font-serif transition-colors hover:bg-orange-950/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-orange-950 disabled:opacity-40 cursor-pointer leading-[1em] hover:text-orange-950',
+        'disabled:cursor-default disabled:hover:bg-transparent disabled:hover:text-orange-950',
         active && 'bg-orange-950/10',
         className,
       )}

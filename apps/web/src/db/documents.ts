@@ -78,6 +78,11 @@ const DeleteCastCharacterInput = z.object({
   canonicalName: z.string().trim().min(1),
 })
 
+const UpdateDocumentTitleInput = z.object({
+  documentId: z.string().min(1),
+  title: z.string().trim().min(1),
+})
+
 export const listDocumentSpans = createServerFn({ method: 'GET' })
   .inputValidator(ListDocumentSpansInput)
   .handler(async ({ data }) => {
@@ -518,6 +523,49 @@ export const deleteCastCharacter = createServerFn({ method: 'POST' })
       }
 
       return { canonicalName: data.canonicalName }
+    })
+  })
+
+export const updateDocumentTitle = createServerFn({ method: 'POST' })
+  .inputValidator(UpdateDocumentTitleInput)
+  .handler(async ({ data }) => {
+    const [{ db }, { documents, works }, { eq }] = await Promise.all([
+      import('./index.ts'),
+      import('./schema.ts'),
+      import('drizzle-orm'),
+    ])
+    const now = new Date().toISOString()
+
+    return db.transaction((tx) => {
+      const document = tx
+        .select({
+          id: documents.id,
+          workId: documents.workId,
+        })
+        .from(documents)
+        .where(eq(documents.id, data.documentId))
+        .get()
+
+      if (!document) {
+        throw new Error('Document not found')
+      }
+
+      tx.update(documents)
+        .set({
+          title: data.title.trim(),
+          updatedAt: now,
+        })
+        .where(eq(documents.id, data.documentId))
+        .run()
+
+      if (document.workId) {
+        tx.update(works)
+          .set({ updatedAt: now })
+          .where(eq(works.id, document.workId))
+          .run()
+      }
+
+      return { updated: 1 }
     })
   })
 
