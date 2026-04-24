@@ -4,13 +4,13 @@ import time
 from typing import Any
 from uuid import uuid4
 
+from auralia_api.cast_detection.storage import CastRequiredError, require_cast_roster
 from auralia_api.segmentation.ollama_client import OllamaError, generate_json
 from auralia_api.validators.reports import build_validation_report
 
 from .parser import AttributionParseError, parse_window_attributions
 from .pre_pass import resolve_dialogue_spans_deterministically
 from .prompts import WINDOW_SYSTEM_PROMPT, build_window_user_prompt
-from .roster import extract_character_roster
 from .storage import (
     AlreadyAttributedError,
     DocumentNotFoundError,
@@ -19,7 +19,6 @@ from .storage import (
     insert_attribution_job,
     insert_attributions,
     load_document_with_spans,
-    save_document_roster,
     update_attribution_job,
 )
 from .validators import run_all_attribution_validators
@@ -65,10 +64,13 @@ def attribute_document(
 
     spans: list[dict[str, Any]] = document["spans"]
     dialogue_ids = [s["id"] for s in spans if s.get("type") == "dialogue"]
-    has_dialogue = bool(dialogue_ids)
 
     job_id = f"attr_{uuid4().hex[:12]}"
-    stage_timings_ms: dict[str, int] = {"roster": 0, "pre_pass": 0, "windowed": 0}
+    stage_timings_ms: dict[str, int] = {
+        "load_cast": 0,
+        "pre_pass": 0,
+        "windowed": 0,
+    }
     insert_attribution_job(
         sqlite_path=sqlite_path,
         job_id=job_id,
@@ -80,17 +82,13 @@ def attribute_document(
     )
 
     try:
-        roster_start = time.perf_counter_ns()
-        roster, roster_usage = extract_character_roster(
-            document_text=document["text"],
-            has_dialogue=has_dialogue,
-            model=model_name,
-            base_url=base_url,
-            timeout_seconds=timeout_seconds,
-            max_retries=max_retries,
+        cast_start = time.perf_counter_ns()
+        roster = require_cast_roster(
+            sqlite_path=sqlite_path,
+            document_id=document["id"],
         )
-        stage_timings_ms["roster"] = int(
-            (time.perf_counter_ns() - roster_start) / 1_000_000
+        stage_timings_ms["load_cast"] = int(
+            (time.perf_counter_ns() - cast_start) / 1_000_000
         )
 
         pre_start = time.perf_counter_ns()
@@ -114,8 +112,8 @@ def attribute_document(
         )
 
         llm_rows: dict[str, dict[str, Any]] = {}
-        llm_prompt_eval = int(roster_usage.get("prompt_eval_count") or 0)
-        llm_eval = int(roster_usage.get("eval_count") or 0)
+        llm_prompt_eval = 0
+        llm_eval = 0
 
         for window in windows:
             parsed_rows, usage = _attribute_window_with_retries(
@@ -198,13 +196,6 @@ def attribute_document(
         ]
         insert_attributions(sqlite_path=sqlite_path, attributions=persisted_rows)
 
-        if roster:
-            save_document_roster(
-                sqlite_path=sqlite_path,
-                document_id=document["id"],
-                roster=roster,
-            )
-
         stats = _build_stats(
             model_name=model_name,
             roster_size=len(roster),
@@ -236,7 +227,12 @@ def attribute_document(
             "attributions": merged,
             "force_wipe": force_wipe,
         }
-    except (DocumentNotFoundError, AlreadyAttributedError, AttributionValidationError):
+    except (
+        DocumentNotFoundError,
+        AlreadyAttributedError,
+        AttributionValidationError,
+        CastRequiredError,
+    ):
         raise
     except OllamaError:
         update_attribution_job(
@@ -422,6 +418,7 @@ def _build_stats(
 __all__ = [
     "AlreadyAttributedError",
     "AttributionValidationError",
+    "CastRequiredError",
     "DocumentNotFoundError",
     "attribute_document",
 ]

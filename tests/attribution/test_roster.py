@@ -32,7 +32,10 @@ def test_extract_character_roster_retries_on_parse_error(monkeypatch):
         if calls["n"] == 1:
             return _Resp("not-json")
         return _Resp(
-            '{"characters":[{"canonical_name":"Harry","aliases":["Harry"],"descriptor":""}]}',
+            (
+                '{"characters":[{"canonical_name":"Harry","aliases":["Harry"],'
+                '"descriptor":""}]}'
+            ),
             p=10,
             e=4,
         )

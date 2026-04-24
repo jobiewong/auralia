@@ -15,7 +15,11 @@ import type { DocumentSpan } from '~/db-collections'
 import { useDocumentDiagnostics, useDocumentSpans } from '~/db-collections'
 import { updateSpanAttribution } from '~/db/documents'
 import { formatElapsed, useElapsedSeconds } from '~/hooks/use-elapsed-seconds'
-import { runAttribution, runSegmentation } from '~/lib/pipeline-api'
+import {
+  runAttribution,
+  runCastDetection,
+  runSegmentation,
+} from '~/lib/pipeline-api'
 import {
   cn,
   countAttributed,
@@ -45,7 +49,7 @@ function RouteComponent() {
   const [activeSpanId, setActiveSpanId] = useState<string | null>(null)
   const [filter, setFilter] = useState<SpanFilter>('all')
   const [runningStage, setRunningStage] = useState<
-    'segmentation' | 'attribution' | null
+    'segmentation' | 'cast detection' | 'attribution' | null
   >(null)
   const [startedAt, setStartedAt] = useState<number | null>(null)
   const [pipelineError, setPipelineError] = useState<string | null>(null)
@@ -65,7 +69,12 @@ function RouteComponent() {
     spans.length > 0
   const hasCompletedAttribution =
     diagnostics?.latestAttributionJob?.status === 'completed'
-  const canRunAttribution = hasCompletedSegmentation && runningStage === null
+  const hasCompletedCastDetection =
+    diagnostics?.latestCastDetectionJob?.status === 'completed' ||
+    (diagnostics?.castCounts.total ?? 0) > 0
+  const canRunCastDetection = hasCompletedSegmentation && runningStage === null
+  const canRunAttribution =
+    hasCompletedSegmentation && hasCompletedCastDetection && runningStage === null
 
   async function refreshDocumentState() {
     await Promise.all([
@@ -103,6 +112,10 @@ function RouteComponent() {
       setPipelineError('Run segmentation before attribution.')
       return
     }
+    if (!hasCompletedCastDetection) {
+      setPipelineError('Run cast detection before attribution.')
+      return
+    }
 
     setRunningStage('attribution')
     setStartedAt(Date.now())
@@ -114,6 +127,29 @@ function RouteComponent() {
     } catch (err) {
       setPipelineError(
         err instanceof Error ? err.message : 'Attribution failed',
+      )
+    } finally {
+      setRunningStage(null)
+      setStartedAt(null)
+    }
+  }
+
+  async function handleRunCastDetection() {
+    if (!hasCompletedSegmentation) {
+      setPipelineError('Run segmentation before cast detection.')
+      return
+    }
+
+    setRunningStage('cast detection')
+    setStartedAt(Date.now())
+    setPipelineError(null)
+
+    try {
+      await runCastDetection(documentId)
+      await refreshDocumentState()
+    } catch (err) {
+      setPipelineError(
+        err instanceof Error ? err.message : 'Cast detection failed',
       )
     } finally {
       setRunningStage(null)
@@ -202,6 +238,17 @@ function RouteComponent() {
           </dl>
 
           <dl className="grid gap-2 py-5 sm:grid-cols-[10rem_1fr]">
+            <dt className="text-foreground/50">Cast</dt>
+            <dd>
+              {formatMetric(diagnostics?.castCounts.total ?? 0, 'members')}
+            </dd>
+            <dt className="text-foreground/50">Cast Review</dt>
+            <dd>
+              {formatMetric(
+                diagnostics?.castCounts.needsReview ?? 0,
+                'needs review',
+              )}
+            </dd>
             <dt className="text-foreground/50">Attribution</dt>
             <dd>
               {formatMetric(
@@ -227,7 +274,7 @@ function RouteComponent() {
         </div>
         <div className="mt-4 flex gap-4">
           <ConfirmationButton
-            className="w-48 min-h-52 px-4 py-2 text-xl"
+            className="w-52 text-xl"
             disabled={runningStage !== null || hasCompletedSegmentation}
             onLongPress={handleRunSegmentation}
           >
@@ -235,7 +282,15 @@ function RouteComponent() {
             {hasCompletedSegmentation ? 'Segmented' : 'Run Segmentation'}
           </ConfirmationButton>
           <ConfirmationButton
-            className="w-43 min-h-52 px-4 py-2 text-xl"
+            className="w-52 text-xl"
+            disabled={!canRunCastDetection || hasCompletedCastDetection}
+            onLongPress={handleRunCastDetection}
+          >
+            <Play className="size-4" />{' '}
+            {hasCompletedCastDetection ? 'Cast Detected' : 'Detect Cast'}
+          </ConfirmationButton>
+          <ConfirmationButton
+            className="w-52 text-xl"
             disabled={!canRunAttribution || hasCompletedAttribution}
             onLongPress={handleRunAttribution}
           >
@@ -251,7 +306,12 @@ function RouteComponent() {
         </div>
         {!hasCompletedSegmentation ? (
           <p className="mt-3 font-serif text-foreground/60">
-            Attribution unlocks after segmentation has completed.
+            Cast detection unlocks after segmentation has completed.
+          </p>
+        ) : null}
+        {hasCompletedSegmentation && !hasCompletedCastDetection ? (
+          <p className="mt-3 font-serif text-foreground/60">
+            Attribution unlocks after cast detection has completed.
           </p>
         ) : null}
         {pipelineError ? (

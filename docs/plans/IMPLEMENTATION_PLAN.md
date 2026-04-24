@@ -189,7 +189,7 @@ Build a fully local, character-aware audiobook pipeline that converts prose into
 
 **Objective:** Attribute speakers for dialogue spans and flag uncertain outputs.
 
-**Status:** ⏸ Paused — pipeline is functional end-to-end against real Qwen3 8B. Benchmarking + prompt/threshold tuning deferred to a later session. Authoritative spec lives in `docs/plans/M4_ATTRIBUTION.md`.
+**Status:** 🟨 Refactoring — attribution remains functional, but roster discovery has been split into dedicated M4.5 cast detection so attribution consumes a persisted editable cast instead of extracting one internally.
 
 **Tasks**
 - [x] Character roster extraction (LLM pass A)
@@ -202,6 +202,7 @@ Build a fully local, character-aware audiobook pipeline that converts prose into
 - [x] Unit + fake-LLM integration tests across modules (46 passing)
 - [x] Robustness hardening against real LLM drift (tolerant parsers, retry-with-feedback, raw-response surfacing)
 - [x] Live smoke run against real Qwen3 8B — endpoint returns attributions end-to-end
+- [x] Refactor target chosen: attribution should load persisted cast members and no longer use LLM roster extraction as the gatekeeper for deterministic speaker tags.
 - [ ] Benchmark fixture set (20 hand-labeled excerpts) + opt-in benchmark test
 - [ ] Prompt/threshold tuning based on measured accuracy
 
@@ -216,6 +217,41 @@ Build a fully local, character-aware audiobook pipeline that converts prose into
 - Config additions (`auralia_api.config`): `attribution_model`, `attribution_confidence_threshold`, `attribution_max_window_dialogues`, `attribution_max_window_chars`, `attribution_max_gap_chars`, `attribution_max_retries`
 - Tests under `tests/attribution/`:
   - `test_pre_pass.py`, `test_windower.py`, `test_parser.py`, `test_prompts.py`, `test_roster.py`, `test_validators.py`, `test_service.py`, `test_attribution_storage.py`, `test_attribution_api.py`
+
+---
+
+## M4.5 — Cast Detection Stage (Deterministic Harvest + Optional Compact LLM)
+
+**Objective:** Build a persisted, editable speaker cast before attribution, using deterministic dialogue-tag evidence first and compact LLM canonicalization only when needed.
+
+**Status:** 🟨 In progress
+
+**Rationale:** The previous M4 roster pass was a single full-document LLM extraction. It missed obvious speakers such as `Dumbledore` even when the text contained `"..." Dumbledore replied.` Because deterministic attribution and LLM attribution were roster-gated, a missing roster entry forced clear dialogue to `UNKNOWN`. Cast discovery is now separated from attribution so explicit tag evidence can create cast candidates directly.
+
+**Tasks**
+- [x] Add dedicated cast tables:
+  - [x] `cast_detection_jobs`
+  - [x] `document_cast_members`
+  - [x] `cast_member_evidence`
+- [x] Add deterministic narration/tag harvester for explicit speaker candidates:
+  - [x] post-dialogue `X said/replied`
+  - [x] post-dialogue `said/replied X`
+  - [x] pre-dialogue `X said,`
+  - [x] pre-dialogue `said X,`
+  - [x] pronoun exclusion
+  - [x] honorific surfaces such as `Professor Dumbledore`, `Mr Lupin`
+- [x] Add `POST /api/detect-cast` with job stats and evidence persistence.
+- [x] Keep `documents.roster` synchronized as a compatibility cache for the existing UI.
+- [x] Refactor attribution to consume persisted cast/legacy roster instead of extracting a roster internally.
+- [x] Add frontend cast-stage trigger and basic cast stats display.
+- [ ] Expand compact LLM alias merge evaluation fixtures (`Remus` ↔ `Mr Lupin`, surname-only references, titles).
+- [ ] Add manual merge UI for cast members and aliases.
+- [ ] Add benchmark report for explicit-speaker recall and alias-merge accuracy.
+
+**Definition of Done**
+- Running cast detection before attribution creates cast candidates from explicit speaker tags without sending the full chapter to the model.
+- Attribution refuses to run when no cast/legacy roster exists.
+- UI shows cast detection job status and lets manual cast edits remain authoritative.
 
 ---
 
@@ -322,11 +358,11 @@ Build a fully local, character-aware audiobook pipeline that converts prose into
 
 ## Execution Order (Recommended)
 
-`M0 -> M1 -> M2 -> M3 -> M4 -> M5 -> M6 -> M7 -> M8`
+`M0 -> M1 -> M2 -> M3 -> M4.5 -> M4 -> M5 -> M6 -> M7 -> M8`
 
 Reasoning:
 - M0 and M1 establish repo layout, schema, and validators before ingestion and LLM stages (avoids costly refactors later).
-- M3/M4 depend on contracts and validators.
+- M4.5 converts segmented spans into an editable cast; M4 attribution consumes that cast.
 - M5 establishes reusable voices and APIs before review/synthesis.
 - M6 is a hard gate for unknown speakers before M7 synthesis.
 
@@ -344,7 +380,7 @@ At end of each session, update:
 
 ### Current Session Log
 
-- **Last updated:** 2026-04-20
+- **Last updated:** 2026-04-24
 - **Completed in this session:**
   - [x] Delivered the full M4 attribution pipeline per `docs/plans/M4_ATTRIBUTION.md`: roster extraction (LLM), deterministic `X said`/`said X` pre-pass (closed verb list, roster-gated), conversation-window batching with locked anchors for alternation inference, cross-stage validators, persistence.
   - [x] Added Drizzle migration `0004_m4_attribution_jobs.sql` plus Python bootstrap mirror in `attribution/storage.py`.
@@ -361,8 +397,13 @@ At end of each session, update:
   - [x] End-to-end smoke run against real Qwen3 8B succeeded — `POST /api/attribute` returns attributions and persists rows to `attributions` + `attribution_jobs`.
   - [x] Added `documents.roster` JSON column (Drizzle migration `0005_m4_documents_roster.sql` + Python bootstrap mirrors) so the expensive LLM roster extraction can be cached per document for future reuse; `save_document_roster()` is called on successful attribution.
   - [x] Full Python suite green (`pytest tests/ -q`: 106 passed). `ruff check apps/api/src tests` clean. `mypy apps/api/src/auralia_api` clean (0 errors across 28 files).
+- **Completed in current cast-detection refactor session:**
+  - [x] Planned dedicated M4.5 cast detection stage to decouple speaker discovery from attribution.
+  - [x] Added deterministic explicit speaker-tag harvesting as the first source of cast candidates.
+  - [x] Added new cast persistence/job/evidence tables and API shape.
+  - [x] Began refactoring attribution to require persisted cast/legacy roster instead of running roster extraction.
 - **M4 status:** 🟨 nearly complete — pipeline, validators, API, tests, and live-LLM robustness all delivered. Benchmark fixture set + measured accuracy tuning still outstanding.
-- **Next immediate task:** build the hand-labeled benchmark fixture set (20 chapter excerpts covering alternation, pronoun tags, group speech, split dialogue) and wire `tests/attribution/test_benchmark.py` as an opt-in gated test. Use the resulting accuracy numbers to decide whether the prompts/thresholds need further tuning before moving to M5.
+- **Next immediate task:** run the cast-detection and attribution suites locally, then build the hand-labeled benchmark fixture set for explicit-speaker recall and alias-merge accuracy.
 - **Blockers:** none.
 - **Resume commands:**
   - `cd ~/repos/auralia`
@@ -379,7 +420,8 @@ At end of each session, update:
 - M1 Contracts + Validators: ✅
 - M2 Ingestion & Cleaning: ✅
 - M3 Segmentation (deterministic quote splitter): ✅
-- M4 Attribution + Review Flags: ⏸ (pipeline + live Qwen3 8B smoke run delivered; benchmarking paused)
+- M4.5 Cast Detection: 🟨 (deterministic stage + persistence/API in progress)
+- M4 Attribution + Review Flags: 🟨 (being refactored to consume persisted cast)
 - M5 Voice Registry API + Voice Management: ⬜
 - M6 React Review + Speaker Corrections: ⬜
 - M7 Synthesis + Assembly: ⬜

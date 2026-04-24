@@ -110,8 +110,12 @@ def test_ingest_ao3_endpoint_persists_cleaned_document(monkeypatch, tmp_path):
         "chapter_id": "133596877",
         "chapter_title": "Chapter 1: Year 1",
         "chapter_number": None,
-        "previous_chapter_url": "https://archiveofourown.org/works/52818466/chapters/133596876",
-        "next_chapter_url": "https://archiveofourown.org/works/52818466/chapters/133596878",
+        "previous_chapter_url": (
+            "https://archiveofourown.org/works/52818466/chapters/133596876"
+        ),
+        "next_chapter_url": (
+            "https://archiveofourown.org/works/52818466/chapters/133596878"
+        ),
         "summary": None,
     }
 

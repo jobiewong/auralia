@@ -66,6 +66,12 @@ class Settings(BaseSettings):
     attribution_max_gap_chars: int = Field(default=400, ge=0, le=5000)
     attribution_max_retries: int = Field(default=3, ge=0, le=10)
 
+    cast_detection_model: str = Field(
+        default="qwen3:8b",
+        description="Ollama model tag used for optional cast canonicalization.",
+    )
+    cast_detection_max_retries: int = Field(default=3, ge=0, le=10)
+
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 

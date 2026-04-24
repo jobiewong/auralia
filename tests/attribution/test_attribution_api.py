@@ -31,21 +31,16 @@ def _ingest_and_segment(client: TestClient, text: str) -> str:
     return doc_id
 
 
+def _detect_cast(client: TestClient, document_id: str) -> None:
+    response = client.post("/api/detect-cast", json={"document_id": document_id})
+    assert response.status_code == 201, response.text
+
+
 def test_attribute_endpoint_happy_path(monkeypatch, tmp_path):
     db_path = tmp_path / "auralia.sqlite"
     client = _client_with_db(monkeypatch, db_path)
     doc_id = _ingest_and_segment(client, '"Hi," Harry said. "Yo," Ron replied.')
-
-    monkeypatch.setattr(
-        "auralia_api.attribution.service.extract_character_roster",
-        lambda **kwargs: (
-            [
-                {"canonical_name": "Harry", "aliases": ["Harry"], "descriptor": ""},
-                {"canonical_name": "Ron", "aliases": ["Ron"], "descriptor": ""},
-            ],
-            {"prompt_eval_count": 0, "eval_count": 0, "duration_ms": 0},
-        ),
-    )
+    _detect_cast(client, doc_id)
 
     response = client.post("/api/attribute", json={"document_id": doc_id})
     assert response.status_code == 201, response.text
@@ -74,18 +69,22 @@ def test_attribute_endpoint_404_missing_document(monkeypatch, tmp_path):
     assert response.status_code == 404
 
 
-def test_attribute_endpoint_409_already_attributed(monkeypatch, tmp_path):
+def test_attribute_endpoint_409_when_cast_missing(monkeypatch, tmp_path):
     db_path = tmp_path / "auralia.sqlite"
     client = _client_with_db(monkeypatch, db_path)
     doc_id = _ingest_and_segment(client, '"Hi," Harry said.')
 
-    monkeypatch.setattr(
-        "auralia_api.attribution.service.extract_character_roster",
-        lambda **kwargs: (
-            [{"canonical_name": "Harry", "aliases": ["Harry"], "descriptor": ""}],
-            {"prompt_eval_count": 0, "eval_count": 0, "duration_ms": 0},
-        ),
-    )
+    response = client.post("/api/attribute", json={"document_id": doc_id})
+
+    assert response.status_code == 409
+    assert "run cast detection" in response.json()["detail"]
+
+
+def test_attribute_endpoint_409_already_attributed(monkeypatch, tmp_path):
+    db_path = tmp_path / "auralia.sqlite"
+    client = _client_with_db(monkeypatch, db_path)
+    doc_id = _ingest_and_segment(client, '"Hi," Harry said.')
+    _detect_cast(client, doc_id)
 
     first = client.post("/api/attribute", json={"document_id": doc_id})
     assert first.status_code == 201
@@ -97,17 +96,7 @@ def test_attribute_endpoint_force_rewipes_attributions(monkeypatch, tmp_path):
     db_path = tmp_path / "auralia.sqlite"
     client = _client_with_db(monkeypatch, db_path)
     doc_id = _ingest_and_segment(client, '"Hi," Harry said. "Yo," Ron replied.')
-
-    monkeypatch.setattr(
-        "auralia_api.attribution.service.extract_character_roster",
-        lambda **kwargs: (
-            [
-                {"canonical_name": "Harry", "aliases": ["Harry"], "descriptor": ""},
-                {"canonical_name": "Ron", "aliases": ["Ron"], "descriptor": ""},
-            ],
-            {"prompt_eval_count": 0, "eval_count": 0, "duration_ms": 0},
-        ),
-    )
+    _detect_cast(client, doc_id)
 
     first = client.post("/api/attribute", json={"document_id": doc_id})
     assert first.status_code == 201
@@ -136,14 +125,7 @@ def test_attribute_endpoint_422_on_validator_failure(monkeypatch, tmp_path):
     db_path = tmp_path / "auralia.sqlite"
     client = _client_with_db(monkeypatch, db_path)
     doc_id = _ingest_and_segment(client, '"Hi," Harry said. "Yo," Harry replied.')
-
-    monkeypatch.setattr(
-        "auralia_api.attribution.service.extract_character_roster",
-        lambda **kwargs: (
-            [{"canonical_name": "Harry", "aliases": ["Harry"], "descriptor": ""}],
-            {"prompt_eval_count": 0, "eval_count": 0, "duration_ms": 0},
-        ),
-    )
+    _detect_cast(client, doc_id)
 
     monkeypatch.setattr(
         "auralia_api.attribution.service._merge_attributions",
@@ -160,17 +142,15 @@ def test_attribute_endpoint_422_on_validator_failure(monkeypatch, tmp_path):
 def test_attribute_endpoint_502_on_ollama_unavailable(monkeypatch, tmp_path):
     db_path = tmp_path / "auralia.sqlite"
     client = _client_with_db(monkeypatch, db_path)
-    doc_id = _ingest_and_segment(client, '"Hi," he said.')
+    doc_id = _ingest_and_segment(client, '"Hi," Harry said. "Okay," he replied.')
+    _detect_cast(client, doc_id)
 
     def _raise_ollama(**kwargs):
         from auralia_api.segmentation.ollama_client import OllamaError
 
         raise OllamaError("connection refused")
 
-    monkeypatch.setattr(
-        "auralia_api.attribution.service.extract_character_roster",
-        _raise_ollama,
-    )
+    monkeypatch.setattr("auralia_api.attribution.service.generate_json", _raise_ollama)
 
     response = client.post("/api/attribute", json={"document_id": doc_id})
     assert response.status_code == 502

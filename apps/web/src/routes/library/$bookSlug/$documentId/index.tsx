@@ -8,7 +8,11 @@ import { ProgressArc } from '~/components/ui/progress-arc'
 import { Button } from '~/components/ui/button'
 import { useDocumentDiagnostics, useDocumentSpans } from '~/db-collections'
 import { formatElapsed, useElapsedSeconds } from '~/hooks/use-elapsed-seconds'
-import { runAttribution, runSegmentation } from '~/lib/pipeline-api'
+import {
+  runAttribution,
+  runCastDetection,
+  runSegmentation,
+} from '~/lib/pipeline-api'
 import {
   countReviewSpans,
   formatDate,
@@ -27,7 +31,7 @@ function RouteComponent() {
   const diagnostics = useDocumentDiagnostics(bookSlug, documentId)
   const reviewCount = countReviewSpans(spans)
   const [runningStage, setRunningStage] = useState<
-    'segmentation' | 'attribution' | null
+    'segmentation' | 'cast detection' | 'attribution' | null
   >(null)
   const [startedAt, setStartedAt] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -38,7 +42,12 @@ function RouteComponent() {
     spans.length > 0
   const hasCompletedAttribution =
     diagnostics?.latestAttributionJob?.status === 'completed'
-  const canRunAttribution = hasCompletedSegmentation && runningStage === null
+  const hasCompletedCastDetection =
+    diagnostics?.latestCastDetectionJob?.status === 'completed' ||
+    (diagnostics?.castCounts.total ?? 0) > 0
+  const canRunCastDetection = hasCompletedSegmentation && runningStage === null
+  const canRunAttribution =
+    hasCompletedSegmentation && hasCompletedCastDetection && runningStage === null
 
   async function refreshDocumentState() {
     await Promise.all([
@@ -74,6 +83,10 @@ function RouteComponent() {
       setError('Run segmentation before attribution.')
       return
     }
+    if (!hasCompletedCastDetection) {
+      setError('Run cast detection before attribution.')
+      return
+    }
 
     setRunningStage('attribution')
     setStartedAt(Date.now())
@@ -84,6 +97,27 @@ function RouteComponent() {
       await refreshDocumentState()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Attribution failed')
+    } finally {
+      setRunningStage(null)
+      setStartedAt(null)
+    }
+  }
+
+  async function handleRunCastDetection() {
+    if (!hasCompletedSegmentation) {
+      setError('Run segmentation before cast detection.')
+      return
+    }
+
+    setRunningStage('cast detection')
+    setStartedAt(Date.now())
+    setError(null)
+
+    try {
+      await runCastDetection(documentId)
+      await refreshDocumentState()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Cast detection failed')
     } finally {
       setRunningStage(null)
       setStartedAt(null)
@@ -105,6 +139,23 @@ function RouteComponent() {
               label="Segmented"
               status={diagnostics?.latestSegmentationJob?.status ?? 'missing'}
               detail="span data available on Text"
+            />
+            <PipelineStage
+              label="Cast"
+              status={diagnostics?.latestCastDetectionJob?.status ?? 'missing'}
+              detail={
+                diagnostics?.castCounts.total ? (
+                  <Link
+                    to="/library/$bookSlug/$documentId/cast"
+                    params={{ bookSlug, documentId }}
+                    className="hover:underline"
+                  >
+                    {formatMetric(diagnostics.castCounts.total, 'cast members')}
+                  </Link>
+                ) : (
+                  'speaker cast available on Cast'
+                )
+              }
             />
             <PipelineStage
               label="Attributed"
@@ -144,6 +195,16 @@ function RouteComponent() {
               <Button
                 type="button"
                 size="lg"
+                disabled={!canRunCastDetection || hasCompletedCastDetection}
+                onClick={handleRunCastDetection}
+                className="min-w-52"
+              >
+                <Play className="size-5" />
+                {hasCompletedCastDetection ? 'Cast Detected' : 'Detect Cast'}
+              </Button>
+              <Button
+                type="button"
+                size="lg"
                 disabled={!canRunAttribution || hasCompletedAttribution}
                 onClick={handleRunAttribution}
                 className="min-w-52"
@@ -160,7 +221,12 @@ function RouteComponent() {
             </div>
             {!hasCompletedSegmentation ? (
               <p className="text-foreground/60">
-                Attribution unlocks after segmentation has completed.
+                Cast detection unlocks after segmentation has completed.
+              </p>
+            ) : null}
+            {hasCompletedSegmentation && !hasCompletedCastDetection ? (
+              <p className="text-foreground/60">
+                Attribution unlocks after cast detection has completed.
               </p>
             ) : null}
             {error ? (
@@ -173,6 +239,10 @@ function RouteComponent() {
         <JobSummary
           title="Segmentation Job"
           job={diagnostics?.latestSegmentationJob ?? null}
+        />
+        <JobSummary
+          title="Cast Detection Job"
+          job={diagnostics?.latestCastDetectionJob ?? null}
         />
         <JobSummary
           title="Attribution Job"

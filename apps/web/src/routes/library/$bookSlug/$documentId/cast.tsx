@@ -22,6 +22,7 @@ import {
   deleteCastCharacter,
   updateCastCharacter,
 } from '~/db/documents'
+import { runCastDetection } from '~/lib/pipeline-api'
 import { formatCount, getSpeakerCounts, parseRoster } from '~/lib/utils'
 
 export const Route = createFileRoute('/library/$bookSlug/$documentId/cast')({
@@ -46,6 +47,8 @@ function RouteComponent() {
   const addCastCharacterFn = useServerFn(addCastCharacter)
   const updateCastCharacterFn = useServerFn(updateCastCharacter)
   const deleteCastCharacterFn = useServerFn(deleteCastCharacter)
+  const [isDetectingCast, setIsDetectingCast] = useState(false)
+  const [castError, setCastError] = useState<string | null>(null)
   const spans = useDocumentSpans(bookSlug, documentId)
   const diagnostics = useDocumentDiagnostics(bookSlug, documentId)
   const roster = parseRoster(diagnostics?.document.roster)
@@ -98,16 +101,62 @@ function RouteComponent() {
     await refreshCastData()
   }
 
+  async function detectCast() {
+    setIsDetectingCast(true)
+    setCastError(null)
+    try {
+      await runCastDetection(documentId)
+      await refreshCastData()
+    } catch (error) {
+      setCastError(error instanceof Error ? error.message : 'Cast detection failed')
+    } finally {
+      setIsDetectingCast(false)
+    }
+  }
+
+  const castStats = diagnostics?.latestCastDetectionJob?.stats
+    ? parseStats(diagnostics.latestCastDetectionJob.stats)
+    : null
+
   return (
     <section>
       <div className="mb-5 flex flex-wrap items-center gap-4">
         <h2 className="font-serif text-3xl">Cast</h2>
+        <Button
+          type="button"
+          disabled={isDetectingCast}
+          onClick={detectCast}
+          className="border-orange-500 text-orange-500 hover:bg-orange-500 hover:text-orange-950 disabled:opacity-50"
+        >
+          {isDetectingCast ? 'Detecting' : 'Detect Cast'}
+        </Button>
         <CastFormDialog
           mode="Add"
           initialForm={emptyCastForm}
           onSave={(form) => saveCastCharacter({ form, originalName: null })}
         />
       </div>
+
+      {castError && (
+        <p className="mb-5 font-serif text-orange-500">{castError}</p>
+      )}
+
+      {diagnostics?.latestCastDetectionJob && (
+        <section className="mb-8 grid gap-2 border-y py-4 font-serif text-foreground/60 sm:grid-cols-4">
+          <p>status: {diagnostics.latestCastDetectionJob.status}</p>
+          <p>cast: {formatCount(diagnostics.castCounts.total, 'member')}</p>
+          <p>
+            evidence:{' '}
+            {formatCount(
+              getStatNumber(castStats, 'explicit_evidence_count'),
+              'tag',
+            )}
+          </p>
+          <p>
+            review: {formatCount(diagnostics.castCounts.needsReview, 'member')}
+          </p>
+        </section>
+      )}
 
       {legacySpeakers.length > 0 && (
         <section className="mb-8 border-y py-5 font-serif">
@@ -335,4 +384,23 @@ function parseAliases(value: string) {
     .split(',')
     .map((alias) => alias.trim())
     .filter(Boolean)
+}
+
+function parseStats(value: string) {
+  try {
+    const parsed = JSON.parse(value) as unknown
+    return typeof parsed === 'object' && parsed !== null
+      ? (parsed as Record<string, unknown>)
+      : null
+  } catch {
+    return null
+  }
+}
+
+function getStatNumber(
+  stats: Record<string, unknown> | null,
+  key: string,
+) {
+  const value = stats?.[key]
+  return typeof value === 'number' ? value : 0
 }

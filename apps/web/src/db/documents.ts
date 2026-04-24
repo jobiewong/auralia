@@ -155,7 +155,9 @@ export const getDocumentDiagnostics = createServerFn({ method: 'GET' })
       {
         attributions,
         attributionJobs,
+        castDetectionJobs,
         documents,
+        documentCastMembers,
         segmentationJobs,
         spans,
         works,
@@ -204,6 +206,21 @@ export const getDocumentDiagnostics = createServerFn({ method: 'GET' })
       .innerJoin(spans, eq(attributions.spanId, spans.id))
       .where(eq(spans.documentId, data.documentId))
       .all()
+    const castRows = db
+      .select({
+        canonicalName: documentCastMembers.canonicalName,
+        aliases: documentCastMembers.aliases,
+        descriptor: documentCastMembers.descriptor,
+        confidence: documentCastMembers.confidence,
+        needsReview: documentCastMembers.needsReview,
+        source: documentCastMembers.source,
+        manuallyEdited: documentCastMembers.manuallyEdited,
+        manuallyDeleted: documentCastMembers.manuallyDeleted,
+      })
+      .from(documentCastMembers)
+      .where(eq(documentCastMembers.documentId, data.documentId))
+      .all()
+      .filter((character) => character.canonicalName.length > 0)
     const latestSegmentationJob = db
       .select({
         id: segmentationJobs.id,
@@ -234,6 +251,21 @@ export const getDocumentDiagnostics = createServerFn({ method: 'GET' })
       .where(eq(attributionJobs.documentId, data.documentId))
       .orderBy(desc(attributionJobs.updatedAt))
       .get()
+    const latestCastDetectionJob = db
+      .select({
+        id: castDetectionJobs.id,
+        status: castDetectionJobs.status,
+        modelName: castDetectionJobs.modelName,
+        stats: castDetectionJobs.stats,
+        errorReport: castDetectionJobs.errorReport,
+        completedAt: castDetectionJobs.completedAt,
+        createdAt: castDetectionJobs.createdAt,
+        updatedAt: castDetectionJobs.updatedAt,
+      })
+      .from(castDetectionJobs)
+      .where(eq(castDetectionJobs.documentId, data.documentId))
+      .orderBy(desc(castDetectionJobs.updatedAt))
+      .get()
 
     const dialogueCount = spanRows.filter(
       (span) => span.type === 'dialogue',
@@ -253,8 +285,25 @@ export const getDocumentDiagnostics = createServerFn({ method: 'GET' })
             0,
           ) / attributionRows.length
 
+    const activeCastRows = castRows.filter(
+      (character) => !character.manuallyDeleted,
+    )
+    const rosterJson =
+      activeCastRows.length > 0
+        ? serializeRoster(
+            activeCastRows.map((character) => ({
+              canonicalName: character.canonicalName,
+              aliases: parseAliasesJson(character.aliases),
+              descriptor: character.descriptor || null,
+            })),
+          )
+        : document.roster
+
     return {
-      document,
+      document: {
+        ...document,
+        roster: rosterJson,
+      },
       spanCounts: {
         total: spanRows.length,
         dialogue: dialogueCount,
@@ -266,7 +315,16 @@ export const getDocumentDiagnostics = createServerFn({ method: 'GET' })
         unknown: unknownCount,
         averageConfidence,
       },
+      castCounts: {
+        total: activeCastRows.length,
+        needsReview: activeCastRows.filter((character) => character.needsReview)
+          .length,
+        manuallyEdited: activeCastRows.filter(
+          (character) => character.manuallyEdited,
+        ).length,
+      },
       latestSegmentationJob: latestSegmentationJob ?? null,
+      latestCastDetectionJob: latestCastDetectionJob ?? null,
       latestAttributionJob: latestAttributionJob ?? null,
     }
   })
@@ -277,7 +335,7 @@ export const updateSpanAttribution = createServerFn({ method: 'POST' })
     const [
       { randomUUID },
       { db },
-      { attributions, documents, spans, works },
+      { attributions, documentCastMembers, documents, spans, works },
       { eq },
     ] = await Promise.all([
       import('node:crypto'),
@@ -347,6 +405,37 @@ export const updateSpanAttribution = createServerFn({ method: 'POST' })
         })
         .where(eq(documents.id, span.documentId))
         .run()
+      if (speaker !== 'UNKNOWN') {
+        tx.insert(documentCastMembers)
+          .values({
+            id: randomUUID(),
+            documentId: span.documentId,
+            canonicalName: speaker,
+            aliases: JSON.stringify([speaker]),
+            descriptor: '',
+            confidence: 1,
+            needsReview: false,
+            source: 'manual',
+            manuallyEdited: true,
+            manuallyDeleted: false,
+            createdAt: now,
+            updatedAt: now,
+          })
+          .onConflictDoUpdate({
+            target: [
+              documentCastMembers.documentId,
+              documentCastMembers.canonicalName,
+            ],
+            set: {
+              confidence: 1,
+              needsReview: false,
+              manuallyEdited: true,
+              manuallyDeleted: false,
+              updatedAt: now,
+            },
+          })
+          .run()
+      }
 
       if (span.workId) {
         tx.update(works)
@@ -367,7 +456,13 @@ export const updateSpanAttribution = createServerFn({ method: 'POST' })
 export const addCastCharacter = createServerFn({ method: 'POST' })
   .inputValidator(CastCharacterInput)
   .handler(async ({ data }) => {
-    const [{ db }, { documents, works }, { eq }] = await Promise.all([
+    const [
+      { randomUUID },
+      { db },
+      { documentCastMembers, documents, works },
+      { eq },
+    ] = await Promise.all([
+      import('node:crypto'),
       import('./index.ts'),
       import('./schema.ts'),
       import('drizzle-orm'),
@@ -400,6 +495,38 @@ export const addCastCharacter = createServerFn({ method: 'POST' })
         })
         .where(eq(documents.id, data.documentId))
         .run()
+      tx.insert(documentCastMembers)
+        .values({
+          id: randomUUID(),
+          documentId: data.documentId,
+          canonicalName: data.canonicalName,
+          aliases: JSON.stringify(data.aliases),
+          descriptor: data.descriptor || '',
+          confidence: 1,
+          needsReview: false,
+          source: 'manual',
+          manuallyEdited: true,
+          manuallyDeleted: false,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .onConflictDoUpdate({
+          target: [
+            documentCastMembers.documentId,
+            documentCastMembers.canonicalName,
+          ],
+          set: {
+            aliases: JSON.stringify(data.aliases),
+            descriptor: data.descriptor || '',
+            confidence: 1,
+            needsReview: false,
+            source: 'manual',
+            manuallyEdited: true,
+            manuallyDeleted: false,
+            updatedAt: now,
+          },
+        })
+        .run()
 
       if (document.workId) {
         tx.update(works)
@@ -416,10 +543,12 @@ export const updateCastCharacter = createServerFn({ method: 'POST' })
   .inputValidator(UpdateCastCharacterInput)
   .handler(async ({ data }) => {
     const [
+      { randomUUID },
       { db },
-      { attributions, documents, spans, works },
+      { attributions, documentCastMembers, documents, spans, works },
       { and, eq, inArray },
     ] = await Promise.all([
+      import('node:crypto'),
       import('./index.ts'),
       import('./schema.ts'),
       import('drizzle-orm'),
@@ -471,6 +600,42 @@ export const updateCastCharacter = createServerFn({ method: 'POST' })
         })
         .where(eq(documents.id, data.documentId))
         .run()
+      tx.update(documentCastMembers)
+        .set({
+          canonicalName: data.canonicalName,
+          aliases: JSON.stringify(data.aliases),
+          descriptor: data.descriptor || '',
+          confidence: 1,
+          needsReview: false,
+          source: 'manual',
+          manuallyEdited: true,
+          manuallyDeleted: false,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(documentCastMembers.documentId, data.documentId),
+            eq(documentCastMembers.canonicalName, data.originalName),
+          ),
+        )
+        .run()
+      tx.insert(documentCastMembers)
+        .values({
+          id: randomUUID(),
+          documentId: data.documentId,
+          canonicalName: data.canonicalName,
+          aliases: JSON.stringify(data.aliases),
+          descriptor: data.descriptor || '',
+          confidence: 1,
+          needsReview: false,
+          source: 'manual',
+          manuallyEdited: true,
+          manuallyDeleted: false,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .onConflictDoNothing()
+        .run()
 
       if (document.workId) {
         tx.update(works)
@@ -486,11 +651,12 @@ export const updateCastCharacter = createServerFn({ method: 'POST' })
 export const deleteCastCharacter = createServerFn({ method: 'POST' })
   .inputValidator(DeleteCastCharacterInput)
   .handler(async ({ data }) => {
-    const [{ db }, { documents, works }, { eq }] = await Promise.all([
-      import('./index.ts'),
-      import('./schema.ts'),
-      import('drizzle-orm'),
-    ])
+    const [{ db }, { documentCastMembers, documents, works }, { and, eq }] =
+      await Promise.all([
+        import('./index.ts'),
+        import('./schema.ts'),
+        import('drizzle-orm'),
+      ])
     const now = new Date().toISOString()
 
     return db.transaction((tx) => {
@@ -514,6 +680,19 @@ export const deleteCastCharacter = createServerFn({ method: 'POST' })
           updatedAt: now,
         })
         .where(eq(documents.id, data.documentId))
+        .run()
+      tx.update(documentCastMembers)
+        .set({
+          manuallyDeleted: true,
+          manuallyEdited: true,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(documentCastMembers.documentId, data.documentId),
+            eq(documentCastMembers.canonicalName, data.canonicalName),
+          ),
+        )
         .run()
 
       if (document.workId) {
@@ -582,7 +761,10 @@ export const deleteDocument = createServerFn({ method: 'POST' })
       {
         attributions,
         attributionJobs,
+        castDetectionJobs,
+        castMemberEvidence,
         documents,
+        documentCastMembers,
         ingestionJobs,
         segmentationJobs,
         spans,
@@ -636,6 +818,15 @@ export const deleteDocument = createServerFn({ method: 'POST' })
         .run()
       tx.delete(voiceMappings)
         .where(eq(voiceMappings.documentId, data.documentId))
+        .run()
+      tx.delete(castMemberEvidence)
+        .where(eq(castMemberEvidence.documentId, data.documentId))
+        .run()
+      tx.delete(documentCastMembers)
+        .where(eq(documentCastMembers.documentId, data.documentId))
+        .run()
+      tx.delete(castDetectionJobs)
+        .where(eq(castDetectionJobs.documentId, data.documentId))
         .run()
       tx.delete(attributionJobs)
         .where(eq(attributionJobs.documentId, data.documentId))
@@ -779,6 +970,17 @@ function parseRosterJson(rosterJson: string | null) {
         }),
       ]
     })
+  } catch {
+    return []
+  }
+}
+
+function parseAliasesJson(value: string) {
+  try {
+    const parsed = JSON.parse(value) as unknown
+    return Array.isArray(parsed)
+      ? parsed.filter((alias): alias is string => typeof alias === 'string')
+      : []
   } catch {
     return []
   }

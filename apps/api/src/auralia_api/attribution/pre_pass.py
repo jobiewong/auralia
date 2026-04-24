@@ -26,7 +26,7 @@ VERBS = [
     "hissed",
     "ribbed",
     "growled",
-    "declared"
+    "declared",
     "grumbled",
     "sighed",
     "exclaimed",

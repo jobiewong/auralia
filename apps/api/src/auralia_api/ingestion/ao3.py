@@ -175,7 +175,10 @@ class _AO3ChapterParser(HTMLParser):
             self._in_summary = True
             self._summary_target_depth = self._depth
 
-        if self._summary_target_depth is not None and self._depth >= self._summary_target_depth:
+        if (
+            self._summary_target_depth is not None
+            and self._depth >= self._summary_target_depth
+        ):
             starttag_text = self.get_starttag_text()
             if starttag_text is not None:
                 self._summary_chunks.append(starttag_text)
@@ -229,10 +232,16 @@ class _AO3ChapterParser(HTMLParser):
             self._in_chapter_select = False
 
         # --- Summary ---
-        if self._summary_target_depth is not None and self._depth >= self._summary_target_depth:
+        if (
+            self._summary_target_depth is not None
+            and self._depth >= self._summary_target_depth
+        ):
             self._summary_chunks.append(f"</{tag}>")
 
-        if self._summary_target_depth is not None and self._depth == self._summary_target_depth:
+        if (
+            self._summary_target_depth is not None
+            and self._depth == self._summary_target_depth
+        ):
             self._summary_target_depth = None
             self._in_summary = False
 
@@ -258,7 +267,10 @@ class _AO3ChapterParser(HTMLParser):
         if self._in_chapter_select and self._current_option_value is not None:
             self._current_option_text.append(data)
 
-        if self._summary_target_depth is not None and self._depth >= self._summary_target_depth:
+        if (
+            self._summary_target_depth is not None
+            and self._depth >= self._summary_target_depth
+        ):
             self._summary_chunks.append(data)
 
         if self._in_title:
@@ -267,13 +279,19 @@ class _AO3ChapterParser(HTMLParser):
     def handle_entityref(self, name: str) -> None:
         if self._target_depth is not None and self._depth >= self._target_depth:
             self._body_chunks.append(f"&{name};")
-        if self._summary_target_depth is not None and self._depth >= self._summary_target_depth:
+        if (
+            self._summary_target_depth is not None
+            and self._depth >= self._summary_target_depth
+        ):
             self._summary_chunks.append(f"&{name};")
 
     def handle_charref(self, name: str) -> None:
         if self._target_depth is not None and self._depth >= self._target_depth:
             self._body_chunks.append(f"&#{name};")
-        if self._summary_target_depth is not None and self._depth >= self._summary_target_depth:
+        if (
+            self._summary_target_depth is not None
+            and self._depth >= self._summary_target_depth
+        ):
             self._summary_chunks.append(f"&#{name};")
 
     def result(self) -> dict:
@@ -410,7 +428,7 @@ def fetch_ao3_chapter(url: str) -> AO3Chapter:
     # Determine work title with fallback chain
     work_title = parsed["work_title"]
     if not work_title:
-        # Try to extract from page title: "Work Title - Fandom - Author - Archive of Our Own"
+        # Try page title: "Work Title - Fandom - Author - Archive of Our Own"
         page_title = parsed.get("page_title")
         if page_title:
             parts = page_title.split(" - ")
@@ -422,7 +440,9 @@ def fetch_ao3_chapter(url: str) -> AO3Chapter:
     # Determine chapter number from select dropdown (fallback: match by chapter_id)
     chapter_number = parsed.get("chapter_number")
     if chapter_number is None:
-        for i, (opt_value, _text, _selected) in enumerate(parsed.get("chapter_options", []), start=1):
+        for i, (opt_value, _text, _selected) in enumerate(
+            parsed.get("chapter_options", []), start=1
+        ):
             if opt_value == chapter_id:
                 chapter_number = i
                 break

@@ -116,6 +116,58 @@ export const attributionJobs = sqliteTable(
   (table) => [index("idx_attribution_jobs_document_status").on(table.documentId, table.status)],
 );
 
+export const castDetectionJobs = sqliteTable(
+  "cast_detection_jobs",
+  {
+    id: text("id").primaryKey(),
+    documentId: text("document_id").notNull().references(() => documents.id, { onDelete: "cascade" }),
+    status: text("status", { enum: ["pending", "running", "failed", "completed"] }).notNull().default("pending"),
+    modelName: text("model_name"),
+    stats: text("stats"),
+    errorReport: text("error_report"),
+    completedAt: text("completed_at"),
+    ...timestamps,
+  },
+  (table) => [index("idx_cast_detection_jobs_document_status").on(table.documentId, table.status)],
+);
+
+export const documentCastMembers = sqliteTable(
+  "document_cast_members",
+  {
+    id: text("id").primaryKey(),
+    documentId: text("document_id").notNull().references(() => documents.id, { onDelete: "cascade" }),
+    canonicalName: text("canonical_name").notNull(),
+    aliases: text("aliases").notNull().default("[]"),
+    descriptor: text("descriptor").notNull().default(""),
+    confidence: real("confidence").notNull().default(1),
+    needsReview: integer("needs_review", { mode: "boolean" }).notNull().default(false),
+    source: text("source").notNull().default("deterministic"),
+    manuallyEdited: integer("manually_edited", { mode: "boolean" }).notNull().default(false),
+    manuallyDeleted: integer("manually_deleted", { mode: "boolean" }).notNull().default(false),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("idx_document_cast_members_document_name").on(table.documentId, table.canonicalName),
+  ],
+);
+
+export const castMemberEvidence = sqliteTable(
+  "cast_member_evidence",
+  {
+    id: text("id").primaryKey(),
+    castMemberId: text("cast_member_id").notNull().references(() => documentCastMembers.id, { onDelete: "cascade" }),
+    documentId: text("document_id").notNull().references(() => documents.id, { onDelete: "cascade" }),
+    spanId: text("span_id").notNull().references(() => spans.id, { onDelete: "cascade" }),
+    relatedDialogueSpanId: text("related_dialogue_span_id").notNull().references(() => spans.id, { onDelete: "cascade" }),
+    evidenceType: text("evidence_type").notNull(),
+    surfaceText: text("surface_text").notNull(),
+    evidenceText: text("evidence_text").notNull(),
+    confidence: real("confidence").notNull().default(1),
+    createdAt: text("created_at").notNull().default("CURRENT_TIMESTAMP"),
+  },
+  (table) => [index("idx_cast_member_evidence_member").on(table.castMemberId)],
+);
+
 export const voices = sqliteTable("voices", {
   id: text("id").primaryKey(),
   displayName: text("display_name").notNull(),

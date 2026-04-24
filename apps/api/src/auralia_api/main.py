@@ -10,10 +10,20 @@ from auralia_api.attribution.schemas import (
 from auralia_api.attribution.service import (
     AlreadyAttributedError,
     AttributionValidationError,
+    CastRequiredError,
     attribute_document,
 )
 from auralia_api.attribution.service import (
     DocumentNotFoundError as AttributionDocumentNotFoundError,
+)
+from auralia_api.cast_detection.schemas import CastDetectRequest, CastDetectResponse
+from auralia_api.cast_detection.service import (
+    AlreadyCastDetectedError,
+    CastDetectionError,
+    detect_cast,
+)
+from auralia_api.cast_detection.service import (
+    DocumentNotFoundError as CastDocumentNotFoundError,
 )
 from auralia_api.config import get_settings
 from auralia_api.ingestion.ao3 import AO3FetchError, AO3ParseError, AO3ValidationError
@@ -137,6 +147,52 @@ def ingest_ao3_endpoint(req: IngestAo3Request) -> IngestTextResponse:
 
 
 @app.post(
+    "/api/detect-cast",
+    response_model=CastDetectResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def detect_cast_endpoint(
+    req: CastDetectRequest,
+    force: bool = Query(
+        False,
+        description=(
+            "If true and the document already has cast members, delete generated "
+            "cast rows while preserving manual edits/deletions, then re-run."
+        ),
+    ),
+) -> CastDetectResponse:
+    settings = get_settings()
+    try:
+        result = detect_cast(
+            document_id=req.document_id,
+            sqlite_path=settings.sqlite_path,
+            model_name=settings.cast_detection_model,
+            base_url=settings.ollama_base_url,
+            timeout_seconds=settings.ollama_timeout_seconds,
+            max_retries=settings.cast_detection_max_retries,
+            force=force,
+            use_llm=req.use_llm,
+        )
+    except CastDocumentNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except AlreadyCastDetectedError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except CastDetectionError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": "cast detection failed",
+                "job_id": exc.job_id,
+                "report": exc.report,
+            },
+        ) from exc
+    except OllamaError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    return CastDetectResponse.model_validate(result)
+
+
+@app.post(
     "/api/attribute",
     response_model=AttributeResponse,
     status_code=status.HTTP_201_CREATED,
@@ -169,6 +225,8 @@ def attribute_endpoint(
     except AttributionDocumentNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except AlreadyAttributedError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except CastRequiredError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except AttributionValidationError as exc:
         raise HTTPException(

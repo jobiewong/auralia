@@ -21,6 +21,12 @@ export async function runSegmentation(documentId: string) {
   }>('/api/segment', { document_id: documentId })
 }
 
+export async function runCastDetection(documentId: string) {
+  return postJson<{
+    cast_detection_job: { id: string; document_id: string; status: string }
+  }>('/api/detect-cast', { document_id: documentId })
+}
+
 export async function runAttribution(documentId: string) {
   return postJson<{
     attribution_job: { id: string; document_id: string; status: string }
