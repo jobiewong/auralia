@@ -1,3 +1,4 @@
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -51,6 +52,18 @@ def test_attribute_endpoint_happy_path(monkeypatch, tmp_path):
     body = response.json()
     assert body["attribution_job"]["status"] == "completed"
     assert len(body["attributions"]) == 2
+    with sqlite3.connect(db_path) as conn:
+        row = conn.execute(
+            """
+            SELECT status, completed_at
+            FROM attribution_jobs
+            WHERE id = ?
+            """,
+            (body["attribution_job"]["id"],),
+        ).fetchone()
+    assert row is not None
+    assert row[0] == "completed"
+    assert row[1] is not None
 
 
 def test_attribute_endpoint_404_missing_document(monkeypatch, tmp_path):
@@ -81,8 +94,6 @@ def test_attribute_endpoint_409_already_attributed(monkeypatch, tmp_path):
 
 
 def test_attribute_endpoint_force_rewipes_attributions(monkeypatch, tmp_path):
-    import sqlite3
-
     db_path = tmp_path / "auralia.sqlite"
     client = _client_with_db(monkeypatch, db_path)
     doc_id = _ingest_and_segment(client, '"Hi," Harry said. "Yo," Ron replied.')

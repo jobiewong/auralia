@@ -20,6 +20,7 @@ from .storage import (
     insert_attributions,
     load_document_with_spans,
     save_document_roster,
+    update_attribution_job,
 )
 from .validators import run_all_attribution_validators
 from .windower import build_attribution_windows
@@ -68,6 +69,15 @@ def attribute_document(
 
     job_id = f"attr_{uuid4().hex[:12]}"
     stage_timings_ms: dict[str, int] = {"roster": 0, "pre_pass": 0, "windowed": 0}
+    insert_attribution_job(
+        sqlite_path=sqlite_path,
+        job_id=job_id,
+        document_id=document["id"],
+        status="running",
+        model_name=model_name,
+        stats=None,
+        error_report=None,
+    )
 
     try:
         roster_start = time.perf_counter_ns()
@@ -167,12 +177,10 @@ def attribute_document(
                 eval_count=llm_eval,
                 timings_ms=stage_timings_ms,
             )
-            insert_attribution_job(
+            update_attribution_job(
                 sqlite_path=sqlite_path,
                 job_id=job_id,
-                document_id=document["id"],
                 status="failed",
-                model_name=model_name,
                 stats=stats,
                 error_report=report,
             )
@@ -208,12 +216,10 @@ def attribute_document(
             eval_count=llm_eval,
             timings_ms=stage_timings_ms,
         )
-        insert_attribution_job(
+        update_attribution_job(
             sqlite_path=sqlite_path,
             job_id=job_id,
-            document_id=document["id"],
             status="completed",
-            model_name=model_name,
             stats=stats,
             error_report=None,
         )
@@ -233,12 +239,10 @@ def attribute_document(
     except (DocumentNotFoundError, AlreadyAttributedError, AttributionValidationError):
         raise
     except OllamaError:
-        insert_attribution_job(
+        update_attribution_job(
             sqlite_path=sqlite_path,
             job_id=job_id,
-            document_id=document["id"],
             status="failed",
-            model_name=model_name,
             stats=None,
             error_report={"message": "ollama unavailable"},
         )
@@ -250,24 +254,20 @@ def attribute_document(
         }
         if exc.raw_response is not None:
             report["raw_response_snippet"] = exc.raw_response[:1000]
-        insert_attribution_job(
+        update_attribution_job(
             sqlite_path=sqlite_path,
             job_id=job_id,
-            document_id=document["id"],
             status="failed",
-            model_name=model_name,
             stats=None,
             error_report=report,
         )
         raise AttributionValidationError(report=report, job_id=job_id) from exc
     except Exception as exc:
         report = {"message": str(exc), "type": type(exc).__name__}
-        insert_attribution_job(
+        update_attribution_job(
             sqlite_path=sqlite_path,
             job_id=job_id,
-            document_id=document["id"],
             status="failed",
-            model_name=model_name,
             stats=None,
             error_report=report,
         )

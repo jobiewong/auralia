@@ -212,9 +212,16 @@ function JobSummary({
     modelName?: string | null
     stats?: string | null
     errorReport?: string | null
+    completedAt?: string | null
+    createdAt: string
     updatedAt: string
   } | null
 }) {
+  const duration =
+    job?.completedAt && job.createdAt
+      ? formatElapsed(diffSeconds(job.createdAt, job.completedAt))
+      : null
+
   return (
     <section className="font-serif">
       <h2 className="mb-5 text-3xl">{title}</h2>
@@ -224,6 +231,12 @@ function JobSummary({
         <dl className="grid gap-2 border-t py-5 sm:grid-cols-[9rem_1fr]">
           <dt className="text-foreground/50">Status</dt>
           <dd>{job.status}</dd>
+          <dt className="text-foreground/50">Started</dt>
+          <dd>{formatDate(job.createdAt)}</dd>
+          <dt className="text-foreground/50">Completed</dt>
+          <dd>{job.completedAt ? formatDate(job.completedAt) : 'not complete'}</dd>
+          <dt className="text-foreground/50">Duration</dt>
+          <dd>{duration ?? 'not complete'}</dd>
           <dt className="text-foreground/50">Updated</dt>
           <dd>{formatDate(job.updatedAt)}</dd>
           <dt className="text-foreground/50">Model</dt>
@@ -236,4 +249,22 @@ function JobSummary({
       )}
     </section>
   )
+}
+
+function diffSeconds(start: string, end: string) {
+  const startedAt = parseSqliteTimestamp(start).getTime()
+  const completedAt = parseSqliteTimestamp(end).getTime()
+
+  if (Number.isNaN(startedAt) || Number.isNaN(completedAt)) {
+    return 0
+  }
+
+  return Math.max(0, Math.floor((completedAt - startedAt) / 1000))
+}
+
+function parseSqliteTimestamp(value: string) {
+  if (value.includes('T')) {
+    return new Date(value)
+  }
+  return new Date(`${value.replace(' ', 'T')}Z`)
 }

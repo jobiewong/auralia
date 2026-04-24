@@ -102,20 +102,23 @@ function RouteComponent() {
           </dd>
           <dt>Author(s)</dt>
           <dd>
-            {metadata?.authors?.length
-              ? metadata.authors.map((author, ci) => (
-                  <a
-                    key={author.url}
-                    href={author.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="hover:underline"
-                  >
-                    {author.name}
-                    {ci < metadata.authors.length - 1 ? ', ' : ''}
-                  </a>
-                ))
-              : '—'}
+            {(() => {
+              const authors = metadata?.authors ?? []
+              return authors.length > 0
+                ? authors.map((author, ci) => (
+                    <a
+                      key={author.url}
+                      href={author.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="hover:underline"
+                    >
+                      {author.name}
+                      {ci < authors.length - 1 ? ', ' : ''}
+                    </a>
+                  ))
+                : '—'
+            })()}
           </dd>
           <dt>Chapters</dt>
           <dd>{chapters.length}</dd>
@@ -172,10 +175,11 @@ function RouteComponent() {
           ) : (
             <ol className="space-y-2">
               {chapters.map((chapter, index) => {
-                const metadata = parseDocumentSourceMetadata(
+                const chapterMetadata = parseDocumentSourceMetadata(
                   chapter.sourceMetadata,
                 )
-                const chapterNumber = metadata?.chapter_number ?? index + 1
+                const chapterNumber =
+                  chapterMetadata?.chapter_number ?? index + 1
 
                 return (
                   <li

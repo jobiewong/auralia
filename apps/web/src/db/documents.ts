@@ -226,6 +226,7 @@ export const getDocumentDiagnostics = createServerFn({ method: 'GET' })
         modelName: attributionJobs.modelName,
         stats: attributionJobs.stats,
         errorReport: attributionJobs.errorReport,
+        completedAt: attributionJobs.completedAt,
         createdAt: attributionJobs.createdAt,
         updatedAt: attributionJobs.updatedAt,
       })

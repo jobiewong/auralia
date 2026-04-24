@@ -23,6 +23,7 @@ class AttributionJobOut(BaseModel):
     status: Literal["pending", "running", "failed", "completed"]
     model_name: str | None = None
     stats: dict[str, Any] | None = None
+    completed_at: str | None = None
 
 
 class CharacterRosterOut(BaseModel):

@@ -56,6 +56,7 @@ CREATE TABLE IF NOT EXISTS attribution_jobs (
   model_name TEXT,
   stats TEXT,
   error_report TEXT,
+  completed_at TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE,
@@ -82,6 +83,7 @@ def _connect(sqlite_path: str) -> sqlite3.Connection:
     conn.execute("PRAGMA foreign_keys = ON;")
     conn.executescript(MIGRATION_SQL)
     _ensure_documents_roster(conn)
+    _ensure_attribution_jobs_completed_at(conn)
     ensure_work_schema(conn)
     return conn
 
@@ -90,6 +92,15 @@ def _ensure_documents_roster(conn: sqlite3.Connection) -> None:
     cols = {row["name"] for row in conn.execute("PRAGMA table_info(documents);")}
     if "roster" not in cols:
         conn.execute("ALTER TABLE documents ADD COLUMN roster TEXT;")
+
+
+def _ensure_attribution_jobs_completed_at(conn: sqlite3.Connection) -> None:
+    cols = {
+        row["name"]
+        for row in conn.execute("PRAGMA table_info(attribution_jobs);")
+    }
+    if "completed_at" not in cols:
+        conn.execute("ALTER TABLE attribution_jobs ADD COLUMN completed_at TEXT;")
 
 
 def load_document_with_spans(*, sqlite_path: str, document_id: str) -> dict[str, Any]:
@@ -214,8 +225,20 @@ def insert_attribution_job(
         conn.execute(
             """
             INSERT INTO attribution_jobs (
-                id, document_id, status, model_name, stats, error_report
-            ) VALUES (?, ?, ?, ?, ?, ?)
+                id,
+                document_id,
+                status,
+                model_name,
+                stats,
+                error_report,
+                completed_at
+            ) VALUES (
+                ?, ?, ?, ?, ?, ?,
+                CASE
+                    WHEN ? IN ('failed', 'completed') THEN CURRENT_TIMESTAMP
+                    ELSE NULL
+                END
+            )
             """,
             (
                 job_id,
@@ -224,5 +247,39 @@ def insert_attribution_job(
                 model_name,
                 json.dumps(stats) if stats is not None else None,
                 json.dumps(error_report) if error_report is not None else None,
+                status,
+            ),
+        )
+
+
+def update_attribution_job(
+    *,
+    sqlite_path: str,
+    job_id: str,
+    status: str,
+    stats: dict[str, Any] | None,
+    error_report: dict[str, Any] | None,
+) -> None:
+    with _connect(sqlite_path) as conn:
+        conn.execute(
+            """
+            UPDATE attribution_jobs
+            SET
+                status = ?,
+                stats = ?,
+                error_report = ?,
+                completed_at = CASE
+                    WHEN ? IN ('failed', 'completed') THEN CURRENT_TIMESTAMP
+                    ELSE completed_at
+                END,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (
+                status,
+                json.dumps(stats) if stats is not None else None,
+                json.dumps(error_report) if error_report is not None else None,
+                status,
+                job_id,
             ),
         )

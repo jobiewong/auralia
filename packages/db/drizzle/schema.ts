@@ -110,6 +110,7 @@ export const attributionJobs = sqliteTable(
     modelName: text("model_name"),
     stats: text("stats"), // JSON: roster size, timings, deterministic/llm counts
     errorReport: text("error_report"), // JSON: machine-readable validator report on failure
+    completedAt: text("completed_at"),
     ...timestamps,
   },
   (table) => [index("idx_attribution_jobs_document_status").on(table.documentId, table.status)],

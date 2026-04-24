@@ -5,6 +5,7 @@ from auralia_api.attribution.storage import (
     insert_attribution_job,
     insert_attributions,
     save_document_roster,
+    update_attribution_job,
 )
 
 
@@ -90,11 +91,80 @@ def test_storage_inserts_attributions_and_job(tmp_path):
 
     conn = sqlite3.connect(db_path)
     attr_count = conn.execute("SELECT COUNT(*) FROM attributions").fetchone()[0]
-    job_count = conn.execute("SELECT COUNT(*) FROM attribution_jobs").fetchone()[0]
+    job_row = conn.execute(
+        "SELECT COUNT(*), completed_at FROM attribution_jobs"
+    ).fetchone()
     conn.close()
 
     assert attr_count == 1
-    assert job_count == 1
+    assert job_row[0] == 1
+    assert job_row[1] is not None
+
+
+def test_storage_updates_attribution_job_completion(tmp_path):
+    db_path = tmp_path / "auralia.sqlite"
+
+    conn = sqlite3.connect(db_path)
+    conn.execute("PRAGMA foreign_keys = ON;")
+    conn.executescript(
+        """
+        CREATE TABLE documents (
+          id TEXT PRIMARY KEY NOT NULL,
+          source_id TEXT NOT NULL,
+          chapter_id TEXT NOT NULL,
+          title TEXT,
+          text TEXT NOT NULL,
+          text_length INTEGER NOT NULL,
+          normalization TEXT NOT NULL,
+          source_metadata TEXT,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        INSERT INTO documents (
+            id, source_id, chapter_id, title, text, text_length, normalization
+        ) VALUES ('doc_1', 'inline:test', 'ch_01', 'Title', '"Hi"', 4, '{}');
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    insert_attribution_job(
+        sqlite_path=str(db_path),
+        job_id="job_1",
+        document_id="doc_1",
+        status="running",
+        model_name="qwen3:8b",
+        stats=None,
+        error_report=None,
+    )
+
+    with sqlite3.connect(db_path) as conn:
+        row = conn.execute(
+            "SELECT status, completed_at FROM attribution_jobs WHERE id = 'job_1'"
+        ).fetchone()
+    assert row == ("running", None)
+
+    update_attribution_job(
+        sqlite_path=str(db_path),
+        job_id="job_1",
+        status="completed",
+        stats={"x": 1},
+        error_report=None,
+    )
+
+    with sqlite3.connect(db_path) as conn:
+        row = conn.execute(
+            """
+            SELECT status, stats, completed_at
+            FROM attribution_jobs
+            WHERE id = 'job_1'
+            """
+        ).fetchone()
+
+    assert row[0] == "completed"
+    assert json.loads(row[1]) == {"x": 1}
+    assert row[2] is not None
 
 
 def test_save_document_roster_persists_json(tmp_path):

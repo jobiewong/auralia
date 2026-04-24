@@ -227,7 +227,7 @@ function RouteComponent() {
         </div>
         <div className="mt-4 flex gap-4">
           <ConfirmationButton
-            className="w-48"
+            className="w-48 min-h-52 px-4 py-2 text-xl"
             disabled={runningStage !== null || hasCompletedSegmentation}
             onLongPress={handleRunSegmentation}
           >
@@ -235,7 +235,7 @@ function RouteComponent() {
             {hasCompletedSegmentation ? 'Segmented' : 'Run Segmentation'}
           </ConfirmationButton>
           <ConfirmationButton
-            className="w-43"
+            className="w-43 min-h-52 px-4 py-2 text-xl"
             disabled={!canRunAttribution || hasCompletedAttribution}
             onLongPress={handleRunAttribution}
           >

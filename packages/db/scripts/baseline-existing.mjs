@@ -193,6 +193,7 @@ function completePreWorksSchema(db) {
       model_name TEXT,
       stats TEXT,
       error_report TEXT,
+      completed_at TEXT,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE,
