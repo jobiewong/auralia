@@ -115,6 +115,11 @@ body {
   }
 }
 
+@layer utilities {
+  .preview {
+    @apply border border-blue-500;
+  }
+}
 @layer components {
   .page-wrap {
     @apply px-4 pb-8 pt-14;

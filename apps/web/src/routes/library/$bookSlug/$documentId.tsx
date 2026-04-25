@@ -101,7 +101,7 @@ function RouteComponent() {
         <h1 className="display-title mb-8">
           {chapter.title || chapter.chapterId}
         </h1>
-        <dl className="grid max-w-4xl gap-2 border-y py-5 font-serif sm:grid-cols-[12rem_1fr]">
+        <dl className="grid gap-2 border-y py-5 font-serif sm:grid-cols-[12rem_1fr]">
           <dt className="text-foreground/50">Book</dt>
           <dd>{book.title}</dd>
           <dt className="text-foreground/50">Document</dt>

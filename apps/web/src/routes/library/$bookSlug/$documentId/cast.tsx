@@ -108,7 +108,9 @@ function RouteComponent() {
       await runCastDetection(documentId)
       await refreshCastData()
     } catch (error) {
-      setCastError(error instanceof Error ? error.message : 'Cast detection failed')
+      setCastError(
+        error instanceof Error ? error.message : 'Cast detection failed',
+      )
     } finally {
       setIsDetectingCast(false)
     }
@@ -120,21 +122,23 @@ function RouteComponent() {
 
   return (
     <section>
-      <div className="mb-5 flex flex-wrap items-center gap-4">
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-4">
         <h2 className="font-serif text-3xl">Cast</h2>
-        <Button
+        <div>
+          {/* <Button
           type="button"
           disabled={isDetectingCast}
           onClick={detectCast}
           className="border-orange-500 text-orange-500 hover:bg-orange-500 hover:text-orange-950 disabled:opacity-50"
         >
           {isDetectingCast ? 'Detecting' : 'Detect Cast'}
-        </Button>
-        <CastFormDialog
-          mode="Add"
-          initialForm={emptyCastForm}
-          onSave={(form) => saveCastCharacter({ form, originalName: null })}
-        />
+        </Button> */}
+          <CastFormDialog
+            mode="Add"
+            initialForm={emptyCastForm}
+            onSave={(form) => saveCastCharacter({ form, originalName: null })}
+          />
+        </div>
       </div>
 
       {castError && (
@@ -142,18 +146,33 @@ function RouteComponent() {
       )}
 
       {diagnostics?.latestCastDetectionJob && (
-        <section className="mb-8 grid gap-2 border-y py-4 font-serif text-foreground/60 sm:grid-cols-4">
-          <p>status: {diagnostics.latestCastDetectionJob.status}</p>
-          <p>cast: {formatCount(diagnostics.castCounts.total, 'member')}</p>
+        <section className="mb-8 grid gap-2 border-y py-4 font-serif sm:grid-cols-4">
           <p>
-            evidence:{' '}
-            {formatCount(
-              getStatNumber(castStats, 'explicit_evidence_count'),
-              'tag',
-            )}
+            Status:
+            <span className="text-foreground/50 ml-4">
+              {diagnostics.latestCastDetectionJob.status}
+            </span>
           </p>
           <p>
-            review: {formatCount(diagnostics.castCounts.needsReview, 'member')}
+            Cast:
+            <span className="text-foreground/50 ml-4">
+              {formatCount(diagnostics.castCounts.total, 'member')}
+            </span>
+          </p>
+          <p>
+            Evidence:
+            <span className="text-foreground/50 ml-4">
+              {formatCount(
+                getStatNumber(castStats, 'explicit_evidence_count'),
+                'tag',
+              )}
+            </span>
+          </p>
+          <p>
+            Review:
+            <span className="text-foreground/50 ml-4">
+              {formatCount(diagnostics.castCounts.needsReview, 'member')}
+            </span>
           </p>
         </section>
       )}
@@ -397,10 +416,7 @@ function parseStats(value: string) {
   }
 }
 
-function getStatNumber(
-  stats: Record<string, unknown> | null,
-  key: string,
-) {
+function getStatNumber(stats: Record<string, unknown> | null, key: string) {
   const value = stats?.[key]
   return typeof value === 'number' ? value : 0
 }

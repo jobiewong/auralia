@@ -74,7 +74,9 @@ function RouteComponent() {
     (diagnostics?.castCounts.total ?? 0) > 0
   const canRunCastDetection = hasCompletedSegmentation && runningStage === null
   const canRunAttribution =
-    hasCompletedSegmentation && hasCompletedCastDetection && runningStage === null
+    hasCompletedSegmentation &&
+    hasCompletedCastDetection &&
+    runningStage === null
 
   async function refreshDocumentState() {
     await Promise.all([
@@ -242,13 +244,13 @@ function RouteComponent() {
             <dd>
               {formatMetric(diagnostics?.castCounts.total ?? 0, 'members')}
             </dd>
-            <dt className="text-foreground/50">Cast Review</dt>
+            {/* <dt className="text-foreground/50">Cast Review</dt>
             <dd>
               {formatMetric(
                 diagnostics?.castCounts.needsReview ?? 0,
                 'needs review',
               )}
-            </dd>
+            </dd> */}
             <dt className="text-foreground/50">Attribution</dt>
             <dd>
               {formatMetric(
