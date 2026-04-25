@@ -27,7 +27,7 @@ function App() {
         <nav className="flex flex-col gap-4">
           <LinkButton to="/new-book">New Book</LinkButton>
           <LinkButton to="/library">Library</LinkButton>
-          <LinkButton to="/library">Voices</LinkButton>
+          <LinkButton to="/voices">Voices</LinkButton>
           <LinkButton to="/library">Queue</LinkButton>
         </nav>
         <ul className="space-y-2">
@@ -54,7 +54,7 @@ function LinkButton({
   to,
   children,
 }: {
-  to: '/' | '/new-book' | '/library'
+  to: '/' | '/new-book' | '/library' | '/voices'
   children: React.ReactNode
 }) {
   return (

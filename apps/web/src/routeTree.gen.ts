@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as VoicesRouteImport } from './routes/voices'
 import { Route as AboutRouteImport } from './routes/about'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as NewBookIndexRouteImport } from './routes/new-book/index'
@@ -20,6 +21,11 @@ import { Route as LibraryBookSlugDocumentIdTextRouteImport } from './routes/libr
 import { Route as LibraryBookSlugDocumentIdSynthesisRouteImport } from './routes/library/$bookSlug/$documentId/synthesis'
 import { Route as LibraryBookSlugDocumentIdCastRouteImport } from './routes/library/$bookSlug/$documentId/cast'
 
+const VoicesRoute = VoicesRouteImport.update({
+  id: '/voices',
+  path: '/voices',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AboutRoute = AboutRouteImport.update({
   id: '/about',
   path: '/about',
@@ -79,6 +85,7 @@ const LibraryBookSlugDocumentIdCastRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
+  '/voices': typeof VoicesRoute
   '/library/': typeof LibraryIndexRoute
   '/new-book/': typeof NewBookIndexRoute
   '/library/$bookSlug/$documentId': typeof LibraryBookSlugDocumentIdRouteWithChildren
@@ -91,6 +98,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
+  '/voices': typeof VoicesRoute
   '/library': typeof LibraryIndexRoute
   '/new-book': typeof NewBookIndexRoute
   '/library/$bookSlug': typeof LibraryBookSlugIndexRoute
@@ -103,6 +111,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
+  '/voices': typeof VoicesRoute
   '/library/': typeof LibraryIndexRoute
   '/new-book/': typeof NewBookIndexRoute
   '/library/$bookSlug/$documentId': typeof LibraryBookSlugDocumentIdRouteWithChildren
@@ -117,6 +126,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/about'
+    | '/voices'
     | '/library/'
     | '/new-book/'
     | '/library/$bookSlug/$documentId'
@@ -129,6 +139,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/about'
+    | '/voices'
     | '/library'
     | '/new-book'
     | '/library/$bookSlug'
@@ -140,6 +151,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/about'
+    | '/voices'
     | '/library/'
     | '/new-book/'
     | '/library/$bookSlug/$documentId'
@@ -153,6 +165,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AboutRoute: typeof AboutRoute
+  VoicesRoute: typeof VoicesRoute
   LibraryIndexRoute: typeof LibraryIndexRoute
   NewBookIndexRoute: typeof NewBookIndexRoute
   LibraryBookSlugDocumentIdRoute: typeof LibraryBookSlugDocumentIdRouteWithChildren
@@ -161,6 +174,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/voices': {
+      id: '/voices'
+      path: '/voices'
+      fullPath: '/voices'
+      preLoaderRoute: typeof VoicesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/about': {
       id: '/about'
       path: '/about'
@@ -258,6 +278,7 @@ const LibraryBookSlugDocumentIdRouteWithChildren =
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AboutRoute: AboutRoute,
+  VoicesRoute: VoicesRoute,
   LibraryIndexRoute: LibraryIndexRoute,
   NewBookIndexRoute: NewBookIndexRoute,
   LibraryBookSlugDocumentIdRoute: LibraryBookSlugDocumentIdRouteWithChildren,

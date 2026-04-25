@@ -2,16 +2,12 @@ import { useHotkey } from '@tanstack/react-hotkeys'
 import { useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import { useServerFn } from '@tanstack/react-start'
-import { Clock } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useMemo, useState } from 'react'
 import { BracketButton } from '~/components/bracket-button'
-
-import { Play } from '~/components/icons/play'
 import { Button } from '~/components/ui/button'
 import type { ComboboxOption } from '~/components/ui/combobox-custom'
 import { Combobox } from '~/components/ui/combobox-custom'
-import { ConfirmationButton } from '~/components/ui/confirmation-button'
 import {
   Dialog,
   DialogClose,
@@ -25,11 +21,6 @@ import type { DocumentSpan } from '~/db-collections'
 import { useDocumentDiagnostics, useDocumentSpans } from '~/db-collections'
 import { updateSpanAttribution } from '~/db/documents'
 import {
-  formatElapsed,
-  useElapsedSecondsFromTimestamp,
-} from '~/hooks/use-elapsed-seconds'
-import {
-  runAttribution,
   runCastDetection,
   runSegmentation,
 } from '~/lib/pipeline-api'
@@ -37,7 +28,6 @@ import {
   cn,
   countAttributed,
   countByType,
-  countReviewSpans,
   countUnknown,
   formatConfidence,
   formatCount,
@@ -68,11 +58,6 @@ function RouteComponent() {
   const [confirmRerunStage, setConfirmRerunStage] = useState<
     'segmentation' | 'cast detection' | null
   >(null)
-  const activePipelineJob = getActivePipelineJob(diagnostics)
-  const isPipelineBusy = runningStage !== null || activePipelineJob !== null
-  const elapsed = useElapsedSecondsFromTimestamp(
-    activePipelineJob?.createdAt ?? null,
-  )
   const speakerOptions = useMemo(
     () => getSpeakerOptions(diagnostics?.document.roster, spans),
     [diagnostics?.document.roster, spans],
@@ -86,13 +71,8 @@ function RouteComponent() {
     diagnostics?.latestSegmentationJob?.status === 'completed' ||
     (diagnostics?.spanCounts.total ?? 0) > 0 ||
     spans.length > 0
-  const hasCompletedAttribution =
-    diagnostics?.latestAttributionJob?.status === 'completed'
   const hasCompletedCastDetection =
     diagnostics?.latestCastDetectionJob?.status === 'completed'
-  const canRunCastDetection = hasCompletedSegmentation && !isPipelineBusy
-  const canRunAttribution =
-    hasCompletedSegmentation && hasCompletedCastDetection && !isPipelineBusy
 
   async function refreshDocumentState() {
     await Promise.all([
@@ -119,33 +99,6 @@ function RouteComponent() {
     } catch (err) {
       setPipelineError(
         err instanceof Error ? err.message : 'Segmentation failed',
-      )
-    } finally {
-      setRunningStage(null)
-    }
-  }
-
-  async function handleRunAttribution(options?: { force?: boolean }) {
-    if (!hasCompletedSegmentation) {
-      setPipelineError('Run segmentation before attribution.')
-      return
-    }
-    if (!hasCompletedCastDetection) {
-      setPipelineError('Run cast detection before attribution.')
-      return
-    }
-
-    setRunningStage('attribution')
-    setPipelineError(null)
-
-    try {
-      const request = runAttribution(documentId, options)
-      window.setTimeout(() => void refreshDocumentState(), 250)
-      await request
-      await refreshDocumentState()
-    } catch (err) {
-      setPipelineError(
-        err instanceof Error ? err.message : 'Attribution failed',
       )
     } finally {
       setRunningStage(null)
@@ -514,30 +467,6 @@ function FilterButton({
       {children}
     </BracketButton>
   )
-}
-
-function getActivePipelineJob(
-  diagnostics: ReturnType<typeof useDocumentDiagnostics>,
-) {
-  const jobs = [
-    { label: 'ingestion', job: diagnostics?.latestIngestionJob },
-    { label: 'segmentation', job: diagnostics?.latestSegmentationJob },
-    { label: 'cast detection', job: diagnostics?.latestCastDetectionJob },
-    { label: 'attribution', job: diagnostics?.latestAttributionJob },
-    { label: 'synthesis', job: diagnostics?.latestSynthesisJob },
-  ]
-
-  const active = jobs.find(
-    ({ job }) => job && (job.status === 'pending' || job.status === 'running'),
-  )
-
-  return active?.job
-    ? {
-        label: active.label,
-        status: active.job.status,
-        createdAt: active.job.createdAt,
-      }
-    : null
 }
 
 function Span({

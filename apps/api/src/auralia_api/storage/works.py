@@ -5,7 +5,6 @@ import re
 import sqlite3
 from uuid import uuid4
 
-
 WORKS_SQL = """
 CREATE TABLE IF NOT EXISTS works (
   id TEXT PRIMARY KEY NOT NULL,

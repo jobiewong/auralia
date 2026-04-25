@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from fastapi import FastAPI, HTTPException, Query, status
+from fastapi import FastAPI, HTTPException, Query, Request, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 
 from auralia_api.attribution.schemas import (
     AttributeRequest,
@@ -41,6 +42,27 @@ from auralia_api.segmentation.service import (
     SegmentationValidationError,
     segment_document,
 )
+from auralia_api.voices.schemas import (
+    VoiceListResponse,
+    VoicePreviewResponse,
+    VoiceProfile,
+    VoiceValidationResponse,
+)
+from auralia_api.voices.service import (
+    VoiceValidationError,
+    create_preview,
+    create_voice,
+    delete_voice,
+    get_preview_file,
+    update_voice,
+    validate_voice,
+)
+from auralia_api.voices.storage import (
+    VoiceDeleteBlockedError,
+    VoiceNotFoundError,
+    get_voice_by_id,
+    list_voices,
+)
 
 app = FastAPI(title="Auralia API", version="0.1.0")
 
@@ -68,6 +90,170 @@ def api_info() -> dict[str, str | int]:
         "api_port": s.api_port,
         "sqlite_path": s.sqlite_path,
     }
+
+
+@app.post(
+    "/api/voices",
+    response_model=VoiceProfile,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_voice_endpoint(request: Request) -> VoiceProfile:
+    settings = get_settings()
+    form = await _read_form(request)
+    try:
+        result = create_voice(
+            sqlite_path=settings.sqlite_path,
+            voice_root=settings.voice_storage_path,
+            display_name=str(form.get("display_name") or ""),
+            mode=str(form.get("mode") or ""),
+            control_text=_optional_text(form.get("control_text")),
+            prompt_text=_optional_text(form.get("prompt_text")),
+            cfg_value=_optional_float(form.get("cfg_value")) or 2.0,
+            inference_timesteps=_optional_int(form.get("inference_timesteps")) or 10,
+            reference_audio=_form_file(form.get("reference_audio")),
+            prompt_audio=_form_file(form.get("prompt_audio")),
+        )
+    except VoiceValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.args[0]) from exc
+    return VoiceProfile.model_validate(result)
+
+
+@app.get("/api/voices", response_model=VoiceListResponse)
+def list_voices_endpoint() -> VoiceListResponse:
+    settings = get_settings()
+    return VoiceListResponse.model_validate(
+        {"voices": list_voices(sqlite_path=settings.sqlite_path)}
+    )
+
+
+@app.get("/api/voices/{voice_id}", response_model=VoiceProfile)
+def get_voice_endpoint(voice_id: str) -> VoiceProfile:
+    settings = get_settings()
+    try:
+        return VoiceProfile.model_validate(
+            get_voice_by_id(sqlite_path=settings.sqlite_path, voice_id=voice_id)
+        )
+    except VoiceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.patch("/api/voices/{voice_id}", response_model=VoiceProfile)
+async def update_voice_endpoint(voice_id: str, request: Request) -> VoiceProfile:
+    settings = get_settings()
+    form = await _read_form(request)
+    try:
+        result = update_voice(
+            sqlite_path=settings.sqlite_path,
+            voice_root=settings.voice_storage_path,
+            voice_id=voice_id,
+            display_name=_optional_text(form.get("display_name")),
+            mode=_optional_text(form.get("mode")),
+            control_text=_optional_text(form.get("control_text")),
+            prompt_text=_optional_text(form.get("prompt_text")),
+            cfg_value=_optional_float(form.get("cfg_value")),
+            inference_timesteps=_optional_int(form.get("inference_timesteps")),
+            reference_audio=_form_file(form.get("reference_audio")),
+            prompt_audio=_form_file(form.get("prompt_audio")),
+        )
+    except VoiceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except VoiceValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.args[0]) from exc
+    return VoiceProfile.model_validate(result)
+
+
+@app.delete("/api/voices/{voice_id}")
+def delete_voice_endpoint(
+    voice_id: str,
+    force: bool = Query(
+        False, description="Delete mappings that reference this voice."
+    ),
+) -> dict[str, int]:
+    settings = get_settings()
+    try:
+        return delete_voice(
+            sqlite_path=settings.sqlite_path,
+            voice_root=settings.voice_storage_path,
+            voice_id=voice_id,
+            force=force,
+        )
+    except VoiceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except VoiceDeleteBlockedError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post("/api/voices/{voice_id}/validate", response_model=VoiceValidationResponse)
+def validate_voice_endpoint(voice_id: str) -> VoiceValidationResponse:
+    settings = get_settings()
+    try:
+        return VoiceValidationResponse.model_validate(
+            validate_voice(
+                sqlite_path=settings.sqlite_path,
+                voice_root=settings.voice_storage_path,
+                voice_id=voice_id,
+            )
+        )
+    except VoiceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/api/voices/{voice_id}/preview", response_model=VoicePreviewResponse)
+def create_voice_preview_endpoint(voice_id: str) -> VoicePreviewResponse:
+    settings = get_settings()
+    try:
+        return VoicePreviewResponse.model_validate(
+            create_preview(
+                sqlite_path=settings.sqlite_path,
+                voice_root=settings.voice_storage_path,
+                voice_id=voice_id,
+            )
+        )
+    except VoiceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except VoiceValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.args[0]) from exc
+
+
+@app.get("/api/voices/{voice_id}/preview-file/{filename}")
+def get_voice_preview_file_endpoint(voice_id: str, filename: str) -> FileResponse:
+    settings = get_settings()
+    try:
+        path = get_preview_file(
+            voice_root=settings.voice_storage_path,
+            voice_id=voice_id,
+            filename=filename,
+        )
+    except VoiceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return FileResponse(path, media_type="audio/wav")
+
+
+async def _read_form(request: Request) -> dict[str, str | UploadFile]:
+    form_data = await request.form()
+    return dict(form_data)  # type: ignore[arg-type]
+
+
+def _optional_text(value: str | UploadFile | None) -> str | None:
+    return value if isinstance(value, str) else None
+
+
+def _optional_float(value: str | UploadFile | None) -> float | None:
+    if not isinstance(value, str) or value == "":
+        return None
+    return float(value)
+
+
+def _optional_int(value: str | UploadFile | None) -> int | None:
+    if not isinstance(value, str) or value == "":
+        return None
+    return int(value)
+
+
+def _form_file(value: str | UploadFile | None) -> UploadFile | None:
+    if value is None or isinstance(value, str):
+        return None
+    return value
 
 
 @app.post(

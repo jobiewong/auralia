@@ -1,13 +1,11 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { motion } from 'motion/react'
-import type { title } from 'node:process'
 import type { ReactNode } from 'react'
 import { useState } from 'react'
 import { Play } from '~/components/icons/play'
 
 import { Button } from '~/components/ui/button'
-import { ConfirmationButton } from '~/components/ui/confirmation-button'
 import {
   Dialog,
   DialogClose,

@@ -1,4 +1,4 @@
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import { useServerFn } from '@tanstack/react-start'
 import type { FormEvent } from 'react'
@@ -22,7 +22,12 @@ import {
   deleteCastCharacter,
   updateCastCharacter,
 } from '~/db/documents'
-import { runCastDetection } from '~/lib/pipeline-api'
+import {
+  clearVoiceMapping,
+  listDocumentVoiceMappings,
+  listVoices,
+  upsertVoiceMapping,
+} from '~/db/voices'
 import { formatCount, getSpeakerCounts, parseRoster } from '~/lib/utils'
 
 export const Route = createFileRoute('/library/$bookSlug/$documentId/cast')({
@@ -47,13 +52,24 @@ function RouteComponent() {
   const addCastCharacterFn = useServerFn(addCastCharacter)
   const updateCastCharacterFn = useServerFn(updateCastCharacter)
   const deleteCastCharacterFn = useServerFn(deleteCastCharacter)
-  const [isDetectingCast, setIsDetectingCast] = useState(false)
-  const [castError, setCastError] = useState<string | null>(null)
+  const upsertVoiceMappingFn = useServerFn(upsertVoiceMapping)
+  const clearVoiceMappingFn = useServerFn(clearVoiceMapping)
   const spans = useDocumentSpans(bookSlug, documentId)
   const diagnostics = useDocumentDiagnostics(bookSlug, documentId)
   const roster = parseRoster(diagnostics?.document.roster)
   const speakerCounts = getSpeakerCounts(spans)
   const legacySpeakers = getLegacySpeakers(roster, speakerCounts)
+  const { data: voices = [] } = useQuery({
+    queryKey: ['voices'],
+    queryFn: () => listVoices(),
+  })
+  const { data: voiceMappings = [] } = useQuery({
+    queryKey: ['document-voice-mappings', documentId],
+    queryFn: () => listDocumentVoiceMappings({ data: { documentId } }),
+  })
+  const mappingBySpeaker = new Map(
+    voiceMappings.map((mapping) => [mapping.speaker, mapping.voiceId]),
+  )
 
   async function refreshCastData() {
     await Promise.all([
@@ -65,7 +81,19 @@ function RouteComponent() {
       }),
       queryClient.invalidateQueries({ queryKey: ['book-documents', bookSlug] }),
       queryClient.invalidateQueries({ queryKey: ['books'] }),
+      queryClient.invalidateQueries({
+        queryKey: ['document-voice-mappings', documentId],
+      }),
     ])
+  }
+
+  async function assignVoice(speaker: string, voiceId: string) {
+    if (!voiceId) {
+      await clearVoiceMappingFn({ data: { documentId, speaker } })
+    } else {
+      await upsertVoiceMappingFn({ data: { documentId, speaker, voiceId } })
+    }
+    await refreshCastData()
   }
 
   async function saveCastCharacter({
@@ -101,21 +129,6 @@ function RouteComponent() {
     await refreshCastData()
   }
 
-  async function detectCast() {
-    setIsDetectingCast(true)
-    setCastError(null)
-    try {
-      await runCastDetection(documentId)
-      await refreshCastData()
-    } catch (error) {
-      setCastError(
-        error instanceof Error ? error.message : 'Cast detection failed',
-      )
-    } finally {
-      setIsDetectingCast(false)
-    }
-  }
-
   const castStats = diagnostics?.latestCastDetectionJob?.stats
     ? parseStats(diagnostics.latestCastDetectionJob.stats)
     : null
@@ -140,10 +153,6 @@ function RouteComponent() {
           />
         </div>
       </div>
-
-      {castError && (
-        <p className="mb-5 font-serif text-orange-500">{castError}</p>
-      )}
 
       {diagnostics?.latestCastDetectionJob && (
         <section className="mb-8 grid gap-2 border-y py-4 font-serif sm:grid-cols-4">
@@ -173,6 +182,31 @@ function RouteComponent() {
           </p>
         </section>
       )}
+
+      <section className="mb-8 border-y py-5 font-serif">
+        <p className="mb-4 text-foreground/50">Voice assignments</p>
+        <ul className="space-y-3">
+          <VoiceAssignmentRow
+            label="Narrator"
+            voices={voices}
+            value={mappingBySpeaker.get('NARRATOR') ?? ''}
+            onChange={(voiceId) => assignVoice('NARRATOR', voiceId)}
+          />
+          {roster
+            .filter((character) => character.canonicalName !== 'UNKNOWN')
+            .map((character) => (
+              <VoiceAssignmentRow
+                key={character.canonicalName}
+                label={character.canonicalName}
+                voices={voices}
+                value={mappingBySpeaker.get(character.canonicalName) ?? ''}
+                onChange={(voiceId) =>
+                  assignVoice(character.canonicalName, voiceId)
+                }
+              />
+            ))}
+        </ul>
+      </section>
 
       {legacySpeakers.length > 0 && (
         <section className="mb-8 border-y py-5 font-serif">
@@ -268,6 +302,55 @@ function RouteComponent() {
         </ul>
       )}
     </section>
+  )
+}
+
+function VoiceAssignmentRow({
+  label,
+  voices,
+  value,
+  onChange,
+}: {
+  label: string
+  voices: Array<{ id: string; displayName: string; mode: string }>
+  value: string
+  onChange: (voiceId: string) => Promise<void>
+}) {
+  const [isSaving, setIsSaving] = useState(false)
+
+  async function handleChange(voiceId: string) {
+    setIsSaving(true)
+    try {
+      await onChange(voiceId)
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const selectedVoice = voices.find((voice) => voice.id === value)
+
+  return (
+    <li className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_18rem]">
+      <div>
+        <p>{label}</p>
+        <p className="text-foreground/50">
+          {selectedVoice ? selectedVoice.displayName : 'voice unmapped'}
+        </p>
+      </div>
+      <select
+        value={value}
+        disabled={isSaving}
+        onChange={(event) => handleChange(event.target.value)}
+        className="border-b bg-transparent px-1 py-1"
+      >
+        <option value="">Unmapped</option>
+        {voices.map((voice) => (
+          <option key={voice.id} value={voice.id}>
+            {voice.displayName}
+          </option>
+        ))}
+      </select>
+    </li>
   )
 }
 

@@ -171,19 +171,26 @@ export const castMemberEvidence = sqliteTable(
   (table) => [index("idx_cast_member_evidence_member").on(table.castMemberId)],
 );
 
-export const voices = sqliteTable("voices", {
-  id: text("id").primaryKey(),
-  displayName: text("display_name").notNull(),
-  mode: text("mode", { enum: ["designed", "clone", "hifi_clone"] }).notNull(),
-  controlText: text("control_text"),
-  referenceAudioPath: text("reference_audio_path"),
-  promptAudioPath: text("prompt_audio_path"),
-  promptText: text("prompt_text"),
-  cfgValue: real("cfg_value").notNull().default(2.0),
-  inferenceTimesteps: integer("inference_timesteps").notNull().default(10),
-  isCanonical: integer("is_canonical", { mode: "boolean" }).notNull().default(true),
-  ...timestamps,
-});
+export const voices = sqliteTable(
+  "voices",
+  {
+    id: text("id").primaryKey(),
+    displayName: text("display_name").notNull(),
+    mode: text("mode", { enum: ["designed", "clone", "hifi_clone"] }).notNull(),
+    controlText: text("control_text"),
+    referenceAudioPath: text("reference_audio_path"),
+    promptAudioPath: text("prompt_audio_path"),
+    promptText: text("prompt_text"),
+    cfgValue: real("cfg_value").notNull().default(2.0),
+    inferenceTimesteps: integer("inference_timesteps").notNull().default(10),
+    isCanonical: integer("is_canonical", { mode: "boolean" }).notNull().default(true),
+    ...timestamps,
+  },
+  (table) => [
+    index("idx_voices_display_name").on(table.displayName),
+    index("idx_voices_mode").on(table.mode),
+  ],
+);
 
 export const voiceMappings = sqliteTable(
   "voice_mappings",
@@ -194,7 +201,10 @@ export const voiceMappings = sqliteTable(
     voiceId: text("voice_id").notNull().references(() => voices.id, { onDelete: "restrict" }),
     ...timestamps,
   },
-  (table) => [index("idx_voice_mappings_document_speaker").on(table.documentId, table.speaker)],
+  (table) => [
+    uniqueIndex("idx_voice_mappings_document_speaker_unique").on(table.documentId, table.speaker),
+    index("idx_voice_mappings_voice_id").on(table.voiceId),
+  ],
 );
 
 export const synthesisJobs = sqliteTable(

@@ -71,6 +71,10 @@ class Settings(BaseSettings):
         description="Ollama model tag used for optional cast canonicalization.",
     )
     cast_detection_max_retries: int = Field(default=3, ge=0, le=10)
+    voice_storage_path: str = Field(
+        default="data/voices",
+        description="Directory for imported voice assets and generated previews.",
+    )
 
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
