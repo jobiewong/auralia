@@ -303,7 +303,32 @@ export function useDocumentDiagnostics(bookSlug: string, documentId: string) {
     queryKey: documentDiagnosticsKey(bookSlug, documentId),
     queryFn: () => getDocumentDiagnostics({ data: { bookSlug, documentId } }),
     staleTime: 5_000,
+    refetchInterval: (query) =>
+      hasActivePipelineJob(query.state.data) ? 1_000 : false,
   })
 
   return diagnostics
+}
+
+function hasActivePipelineJob(diagnostics: unknown) {
+  if (!diagnostics || typeof diagnostics !== 'object') {
+    return false
+  }
+
+  return [
+    'latestIngestionJob',
+    'latestSegmentationJob',
+    'latestCastDetectionJob',
+    'latestAttributionJob',
+    'latestSynthesisJob',
+  ].some((key) => {
+    const job = (diagnostics as Record<string, unknown>)[key]
+    return (
+      job &&
+      typeof job === 'object' &&
+      ['pending', 'running'].includes(
+        String((job as { status?: unknown }).status),
+      )
+    )
+  })
 }

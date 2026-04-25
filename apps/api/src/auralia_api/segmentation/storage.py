@@ -5,6 +5,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
+from auralia_api.storage.pipeline_resets import reset_after_segmentation_rerun
 from auralia_api.storage.works import ensure_work_schema
 
 # Dev-convenience bootstrap mirroring the canonical Drizzle migrations at
@@ -60,6 +61,7 @@ CREATE TABLE IF NOT EXISTS segmentation_jobs (
   model_name TEXT,
   stats TEXT,
   error_report TEXT,
+  completed_at TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE,
@@ -86,6 +88,7 @@ def _connect(sqlite_path: str) -> sqlite3.Connection:
     conn.execute("PRAGMA foreign_keys = ON;")
     conn.executescript(MIGRATION_SQL)
     _ensure_documents_roster(conn)
+    _ensure_segmentation_jobs_completed_at(conn)
     ensure_work_schema(conn)
     return conn
 
@@ -94,6 +97,15 @@ def _ensure_documents_roster(conn: sqlite3.Connection) -> None:
     cols = {row["name"] for row in conn.execute("PRAGMA table_info(documents);")}
     if "roster" not in cols:
         conn.execute("ALTER TABLE documents ADD COLUMN roster TEXT;")
+
+
+def _ensure_segmentation_jobs_completed_at(conn: sqlite3.Connection) -> None:
+    cols = {
+        row["name"]
+        for row in conn.execute("PRAGMA table_info(segmentation_jobs);")
+    }
+    if "completed_at" not in cols:
+        conn.execute("ALTER TABLE segmentation_jobs ADD COLUMN completed_at TEXT;")
 
 
 def load_document(*, sqlite_path: str, document_id: str) -> dict[str, Any]:
@@ -118,11 +130,12 @@ def document_has_spans(*, sqlite_path: str, document_id: str) -> bool:
 
 def delete_spans_for_document(
     *, sqlite_path: str, document_id: str
-) -> tuple[int, int]:
+) -> tuple[int, int, dict[str, int]]:
     """Delete spans for a document. Returns (spans_deleted, attributions_cascaded).
 
-    Attributions with a FK on span_id cascade-delete automatically via
-    ON DELETE CASCADE. The count is captured before the delete for reporting.
+    Attributions with a FK on span_id may cascade-delete automatically via
+    ON DELETE CASCADE. Downstream data is explicitly deleted first so stale
+    jobs and cast rows do not survive a forced segmentation rerun.
     """
     with _connect(sqlite_path) as conn:
         attrs_row = conn.execute(
@@ -134,12 +147,15 @@ def delete_spans_for_document(
             (document_id,),
         ).fetchone()
         attrs_count = int(attrs_row[0]) if attrs_row else 0
+        downstream_counts = reset_after_segmentation_rerun(
+            conn, document_id=document_id
+        )
         cur = conn.execute(
             "DELETE FROM spans WHERE document_id = ?",
             (document_id,),
         )
         spans_count = cur.rowcount
-    return spans_count, attrs_count
+    return spans_count, attrs_count, downstream_counts
 
 
 def insert_segmentation_job(
@@ -157,8 +173,25 @@ def insert_segmentation_job(
         conn.execute(
             """
             INSERT INTO segmentation_jobs (
-                id, document_id, status, chunk_count, model_name, stats, error_report
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                id,
+                document_id,
+                status,
+                chunk_count,
+                model_name,
+                stats,
+                error_report,
+                completed_at,
+                created_at,
+                updated_at
+            ) VALUES (
+                ?, ?, ?, ?, ?, ?, ?,
+                CASE
+                    WHEN ? IN ('failed', 'completed') THEN CURRENT_TIMESTAMP
+                    ELSE NULL
+                END,
+                CURRENT_TIMESTAMP,
+                CURRENT_TIMESTAMP
+            )
             """,
             (
                 job_id,
@@ -168,6 +201,46 @@ def insert_segmentation_job(
                 model_name,
                 json.dumps(stats) if stats is not None else None,
                 json.dumps(error_report) if error_report is not None else None,
+                status,
+            ),
+        )
+
+
+def update_segmentation_job(
+    *,
+    sqlite_path: str,
+    job_id: str,
+    status: str,
+    chunk_count: int,
+    model_name: str | None,
+    stats: dict[str, Any] | None,
+    error_report: dict[str, Any] | None,
+) -> None:
+    with _connect(sqlite_path) as conn:
+        conn.execute(
+            """
+            UPDATE segmentation_jobs
+            SET
+                status = ?,
+                chunk_count = ?,
+                model_name = ?,
+                stats = ?,
+                error_report = ?,
+                completed_at = CASE
+                    WHEN ? IN ('failed', 'completed') THEN CURRENT_TIMESTAMP
+                    ELSE completed_at
+                END,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (
+                status,
+                chunk_count,
+                model_name,
+                json.dumps(stats) if stats is not None else None,
+                json.dumps(error_report) if error_report is not None else None,
+                status,
+                job_id,
             ),
         )
 

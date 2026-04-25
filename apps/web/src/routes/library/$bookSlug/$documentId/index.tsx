@@ -1,19 +1,34 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { motion } from 'motion/react'
+import type { title } from 'node:process'
 import type { ReactNode } from 'react'
 import { useState } from 'react'
 import { Play } from '~/components/icons/play'
-import { ProgressArc } from '~/components/ui/progress-arc'
 
 import { Button } from '~/components/ui/button'
+import { ConfirmationButton } from '~/components/ui/confirmation-button'
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '~/components/ui/dialog'
+import { ProgressArc } from '~/components/ui/progress-arc'
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from '~/components/ui/tooltip'
 import { useDocumentDiagnostics, useDocumentSpans } from '~/db-collections'
-import { formatElapsed, useElapsedSeconds } from '~/hooks/use-elapsed-seconds'
+import {
+  diffSeconds,
+  formatElapsed,
+  useElapsedSecondsFromTimestamp,
+} from '~/hooks/use-elapsed-seconds'
 import {
   runAttribution,
   runCastDetection,
@@ -40,9 +55,13 @@ function RouteComponent() {
   const [runningStage, setRunningStage] = useState<
     'segmentation' | 'cast detection' | 'attribution' | null
   >(null)
-  const [startedAt, setStartedAt] = useState<number | null>(null)
+  const [confirmRerunStage, setConfirmRerunStage] = useState<
+    'segmentation' | 'cast detection' | null
+  >(null)
+  const [runningStartedAt, setRunningStartedAt] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const elapsed = useElapsedSeconds(startedAt)
+  const activePipelineJob = getActivePipelineJob(diagnostics)
+  const isPipelineBusy = runningStage !== null || activePipelineJob !== null
   const hasCompletedSegmentation =
     diagnostics?.latestSegmentationJob?.status === 'completed' ||
     (diagnostics?.spanCounts.total ?? 0) > 0 ||
@@ -50,13 +69,10 @@ function RouteComponent() {
   const hasCompletedAttribution =
     diagnostics?.latestAttributionJob?.status === 'completed'
   const hasCompletedCastDetection =
-    diagnostics?.latestCastDetectionJob?.status === 'completed' ||
-    (diagnostics?.castCounts.total ?? 0) > 0
-  const canRunCastDetection = hasCompletedSegmentation && runningStage === null
+    diagnostics?.latestCastDetectionJob?.status === 'completed'
+  const canRunCastDetection = hasCompletedSegmentation && !isPipelineBusy
   const canRunAttribution =
-    hasCompletedSegmentation &&
-    hasCompletedCastDetection &&
-    runningStage === null
+    hasCompletedSegmentation && hasCompletedCastDetection && !isPipelineBusy
 
   async function refreshDocumentState() {
     await Promise.all([
@@ -71,23 +87,25 @@ function RouteComponent() {
     ])
   }
 
-  async function handleRunSegmentation() {
+  async function handleRunSegmentation(options?: { force?: boolean }) {
     setRunningStage('segmentation')
-    setStartedAt(Date.now())
+    setRunningStartedAt(new Date().toISOString())
     setError(null)
 
     try {
-      await runSegmentation(documentId)
+      const request = runSegmentation(documentId, options)
+      window.setTimeout(() => void refreshDocumentState(), 250)
+      await request
       await refreshDocumentState()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Segmentation failed')
     } finally {
       setRunningStage(null)
-      setStartedAt(null)
+      setRunningStartedAt(null)
     }
   }
 
-  async function handleRunAttribution() {
+  async function handleRunAttribution(options?: { force?: boolean }) {
     if (!hasCompletedSegmentation) {
       setError('Run segmentation before attribution.')
       return
@@ -98,38 +116,53 @@ function RouteComponent() {
     }
 
     setRunningStage('attribution')
-    setStartedAt(Date.now())
+    setRunningStartedAt(new Date().toISOString())
     setError(null)
 
     try {
-      await runAttribution(documentId)
+      const request = runAttribution(documentId, options)
+      window.setTimeout(() => void refreshDocumentState(), 250)
+      await request
       await refreshDocumentState()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Attribution failed')
     } finally {
       setRunningStage(null)
-      setStartedAt(null)
+      setRunningStartedAt(null)
     }
   }
 
-  async function handleRunCastDetection() {
+  async function handleRunCastDetection(options?: { force?: boolean }) {
     if (!hasCompletedSegmentation) {
       setError('Run segmentation before cast detection.')
       return
     }
 
     setRunningStage('cast detection')
-    setStartedAt(Date.now())
+    setRunningStartedAt(new Date().toISOString())
     setError(null)
 
     try {
-      await runCastDetection(documentId)
+      const request = runCastDetection(documentId, { ...options, useLLM: true })
+      window.setTimeout(() => void refreshDocumentState(), 250)
+      await request
       await refreshDocumentState()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Cast detection failed')
     } finally {
       setRunningStage(null)
-      setStartedAt(null)
+      setRunningStartedAt(null)
+    }
+  }
+
+  async function handleConfirmRerun() {
+    const stage = confirmRerunStage
+    setConfirmRerunStage(null)
+    if (stage === 'segmentation') {
+      await handleRunSegmentation({ force: true })
+    }
+    if (stage === 'cast detection') {
+      await handleRunCastDetection({ force: true })
     }
   }
 
@@ -141,8 +174,14 @@ function RouteComponent() {
           <ol className="flex flex-col font-serif border-t pt-5">
             <PipelineStage
               label="Ingestion"
-              status="completed"
+              status={diagnostics?.latestIngestionJob?.status ?? 'completed'}
               detail="document stored"
+              diagnostics={diagnostics?.latestIngestionJob}
+              timerJob={getStageTimerJob({
+                job: diagnostics?.latestIngestionJob,
+                isLocallyRunning: false,
+                runningStartedAt,
+              })}
               action={
                 <Button
                   type="button"
@@ -157,7 +196,11 @@ function RouteComponent() {
             />
             <PipelineStage
               label="Segmentation"
-              status={diagnostics?.latestSegmentationJob?.status ?? 'missing'}
+              status={getStageStatus({
+                job: diagnostics?.latestSegmentationJob,
+                fallbackStatus: 'missing',
+                isLocallyRunning: runningStage === 'segmentation',
+              })}
               detail={
                 <Link
                   to="/library/$bookSlug/$documentId/text"
@@ -168,22 +211,30 @@ function RouteComponent() {
                 </Link>
               }
               diagnostics={diagnostics?.latestSegmentationJob}
+              timerJob={getStageTimerJob({
+                job: diagnostics?.latestSegmentationJob,
+                isLocallyRunning: runningStage === 'segmentation',
+                runningStartedAt,
+              })}
               action={
-                <Button
-                  type="button"
-                  size="lg"
-                  disabled={runningStage !== null || hasCompletedSegmentation}
-                  onClick={handleRunSegmentation}
-                  className="w-52"
-                >
-                  <Play className="size-5" />
-                  {hasCompletedSegmentation ? 'Segmented' : 'Run Segmentation'}
-                </Button>
+                <PipelineActionButton
+                  completed={hasCompletedSegmentation}
+                  disabled={isPipelineBusy}
+                  isRunning={runningStage === 'segmentation'}
+                  runLabel="Run Segmentation"
+                  completedLabel="Segmented"
+                  onRun={() => handleRunSegmentation()}
+                  onRerun={() => setConfirmRerunStage('segmentation')}
+                />
               }
             />
             <PipelineStage
               label="Cast Detection"
-              status={diagnostics?.latestCastDetectionJob?.status ?? 'missing'}
+              status={getStageStatus({
+                job: diagnostics?.latestCastDetectionJob,
+                fallbackStatus: 'missing',
+                isLocallyRunning: runningStage === 'cast detection',
+              })}
               detail={
                 <Link
                   to="/library/$bookSlug/$documentId/cast"
@@ -196,22 +247,30 @@ function RouteComponent() {
                 </Link>
               }
               diagnostics={diagnostics?.latestCastDetectionJob}
+              timerJob={getStageTimerJob({
+                job: diagnostics?.latestCastDetectionJob,
+                isLocallyRunning: runningStage === 'cast detection',
+                runningStartedAt,
+              })}
               action={
-                <Button
-                  type="button"
-                  size="lg"
-                  disabled={!canRunCastDetection || hasCompletedCastDetection}
-                  onClick={handleRunCastDetection}
-                  className="w-52"
-                >
-                  <Play className="size-5" />
-                  {hasCompletedCastDetection ? 'Cast Detected' : 'Detect Cast'}
-                </Button>
+                <PipelineActionButton
+                  completed={hasCompletedCastDetection}
+                  disabled={!canRunCastDetection}
+                  isRunning={runningStage === 'cast detection'}
+                  runLabel="Detect Cast"
+                  completedLabel="Cast Detected"
+                  onRun={() => handleRunCastDetection()}
+                  onRerun={() => setConfirmRerunStage('cast detection')}
+                />
               }
             />
             <PipelineStage
               label="Attribution"
-              status={diagnostics?.latestAttributionJob?.status ?? 'missing'}
+              status={getStageStatus({
+                job: diagnostics?.latestAttributionJob,
+                fallbackStatus: 'missing',
+                isLocallyRunning: runningStage === 'attribution',
+              })}
               detail={
                 <Link
                   to="/library/$bookSlug/$documentId/text"
@@ -224,28 +283,112 @@ function RouteComponent() {
                 </Link>
               }
               diagnostics={diagnostics?.latestAttributionJob}
+              timerJob={getStageTimerJob({
+                job: diagnostics?.latestAttributionJob,
+                isLocallyRunning: runningStage === 'attribution',
+                runningStartedAt,
+              })}
               action={
-                <Button
-                  type="button"
-                  size="lg"
-                  disabled={!canRunAttribution || hasCompletedAttribution}
-                  onClick={handleRunAttribution}
-                  className="w-52"
-                >
-                  <Play className="size-5" />
-                  {hasCompletedAttribution ? 'Attributed' : 'Run Attribution'}
-                </Button>
+                <PipelineActionButton
+                  completed={hasCompletedAttribution}
+                  disabled={!canRunAttribution}
+                  isRunning={runningStage === 'attribution'}
+                  runLabel="Run Attribution"
+                  completedLabel="Attributed"
+                  onRun={() => handleRunAttribution()}
+                  onRerun={() => handleRunAttribution({ force: true })}
+                />
               }
             />
             <PipelineStage
               label="Synthesis"
-              status={'not implemented'}
+              status={
+                diagnostics?.latestSynthesisJob?.status ?? 'not implemented'
+              }
               detail={null}
+              diagnostics={diagnostics?.latestSynthesisJob}
+              timerJob={getStageTimerJob({
+                job: diagnostics?.latestSynthesisJob,
+                isLocallyRunning: false,
+                runningStartedAt,
+              })}
             />
           </ol>
+          {error ? (
+            <p className="mt-3 font-serif text-orange-950" role="alert">
+              {error}
+            </p>
+          ) : null}
+          <PipelineRerunDialog
+            stage={confirmRerunStage}
+            isRunning={runningStage !== null}
+            onOpenChange={(open) => {
+              if (!open) {
+                setConfirmRerunStage(null)
+              }
+            }}
+            onConfirm={handleConfirmRerun}
+          />
         </div>
       </section>
     </div>
+  )
+}
+
+function PipelineRerunDialog({
+  stage,
+  isRunning,
+  onOpenChange,
+  onConfirm,
+}: {
+  stage: 'segmentation' | 'cast detection' | null
+  isRunning: boolean
+  onOpenChange: (open: boolean) => void
+  onConfirm: () => Promise<void>
+}) {
+  const copy =
+    stage === 'segmentation'
+      ? {
+          title: 'Re-run segmentation',
+          description:
+            'This will delete and regenerate spans, reset cast detection, attribution, and synthesis-derived outputs. Manual cast edits will be preserved, but cast detection must be run again.',
+          confirmLabel: 'Re-run Segmentation',
+        }
+      : {
+          title: 'Re-run cast detection',
+          description:
+            'This will delete regenerated cast evidence, reset attribution and synthesis-derived outputs, then detect cast again. Manual cast edits and deletions will be preserved.',
+          confirmLabel: 'Re-run Cast Detection',
+        }
+
+  return (
+    <Dialog open={stage !== null} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{copy.title}</DialogTitle>
+          <DialogDescription>{copy.description}</DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button
+            disabled={isRunning}
+            onClick={onConfirm}
+            size="lg"
+            className="bg-orange-500 text-orange-950 disabled:opacity-50 hover:bg-orange-500/70 hover:text-orange-950"
+          >
+            {isRunning ? 'Running' : copy.confirmLabel}
+          </Button>
+          <DialogClose asChild>
+            <Button
+              disabled={isRunning}
+              size="lg"
+              className="text-orange-500 border-orange-500 hover:bg-orange-500 hover:text-orange-950"
+            >
+              Cancel
+            </Button>
+          </DialogClose>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -254,6 +397,7 @@ function PipelineStage({
   status,
   detail,
   diagnostics,
+  timerJob,
   action,
 }: {
   label: string
@@ -268,6 +412,10 @@ function PipelineStage({
     completedAt?: string | null
     createdAt: string
     updatedAt: string
+  } | null
+  timerJob?: {
+    status: string
+    createdAt: string
   } | null
   action?: ReactNode
 }) {
@@ -306,9 +454,73 @@ function PipelineStage({
             ) : null}
           </Tooltip>
         </div>
-        {action ?? null}
+        <div className="flex items-center gap-4">
+          {action ?? null}
+          {timerJob ? <JobTimer job={timerJob} /> : null}
+        </div>
       </div>
     </li>
+  )
+}
+
+function PipelineActionButton({
+  completed,
+  disabled,
+  isRunning,
+  runLabel,
+  completedLabel,
+  onRun,
+  onRerun,
+}: {
+  completed: boolean
+  disabled: boolean
+  isRunning: boolean
+  runLabel: string
+  completedLabel: string
+  onRun: () => void
+  onRerun: () => void
+}) {
+  if (completed) {
+    return (
+      <Button
+        className="w-52 text-xl"
+        onClick={onRerun}
+        disabled={disabled || isRunning}
+      >
+        <Play className="size-4" /> {completedLabel}
+      </Button>
+    )
+  }
+
+  return (
+    <Button
+      type="button"
+      size="lg"
+      disabled={disabled}
+      onClick={onRun}
+      className="w-52 border-dashed text-xl"
+    >
+      <Play className="size-5" />
+      {runLabel}
+    </Button>
+  )
+}
+
+function JobTimer({
+  job,
+}: {
+  job: {
+    status: string
+    createdAt: string
+  }
+}) {
+  const elapsed = useElapsedSecondsFromTimestamp(job.createdAt)
+
+  return (
+    <p className="flex items-center gap-2 font-serif text-lg text-foreground/60">
+      <ProgressArc className="size-5" />
+      {job.status} for {formatElapsed(elapsed)}
+    </p>
   )
 }
 
@@ -328,10 +540,15 @@ function JobSummary({
     updatedAt: string
   } | null
 }) {
+  const activeElapsed = useElapsedSecondsFromTimestamp(
+    job && isActiveJobStatus(job.status) ? job.createdAt : null,
+  )
   const duration =
-    job?.completedAt && job.createdAt
-      ? formatElapsed(diffSeconds(job.createdAt, job.completedAt))
-      : null
+    job && isActiveJobStatus(job.status)
+      ? formatElapsed(activeElapsed)
+      : job?.completedAt && job.createdAt
+        ? formatElapsed(diffSeconds(job.createdAt, job.completedAt))
+        : null
 
   return (
     <div className="font-serif">
@@ -345,15 +562,20 @@ function JobSummary({
           <dt className="text-orange-500/50">Status</dt>
           <dd>{job.status}</dd>
           <dt className="text-orange-500/50">Started</dt>
-          <dd>{formatDate(job.createdAt)}</dd>
+          <dd>{formatDate(job.createdAt, true)}</dd>
           <dt className="text-orange-500/50">Completed</dt>
           <dd>
-            {job.completedAt ? formatDate(job.completedAt) : 'not complete'}
+            {job.completedAt
+              ? formatDate(job.completedAt, true)
+              : 'not complete'}
           </dd>
           <dt className="text-orange-500/50">Duration</dt>
-          <dd>{duration ?? 'not complete'}</dd>
+          <dd>
+            {duration ??
+              (job.status === 'failed' ? 'not recorded' : 'not complete')}
+          </dd>
           <dt className="text-orange-500/50">Updated</dt>
-          <dd>{formatDate(job.updatedAt)}</dd>
+          <dd>{formatDate(job.updatedAt, true)}</dd>
           <dt className="text-orange-500/50">Model</dt>
           <dd>{job.modelName || 'none'}</dd>
           <dt className="text-orange-500/50">Stats</dt>
@@ -366,20 +588,59 @@ function JobSummary({
   )
 }
 
-function diffSeconds(start: string, end: string) {
-  const startedAt = parseSqliteTimestamp(start).getTime()
-  const completedAt = parseSqliteTimestamp(end).getTime()
-
-  if (Number.isNaN(startedAt) || Number.isNaN(completedAt)) {
-    return 0
-  }
-
-  return Math.max(0, Math.floor((completedAt - startedAt) / 1000))
+function isActiveJobStatus(status: string) {
+  return status === 'pending' || status === 'running'
 }
 
-function parseSqliteTimestamp(value: string) {
-  if (value.includes('T')) {
-    return new Date(value)
+function getActivePipelineJob(
+  diagnostics: ReturnType<typeof useDocumentDiagnostics>,
+) {
+  const jobs = [
+    diagnostics?.latestIngestionJob,
+    diagnostics?.latestSegmentationJob,
+    diagnostics?.latestCastDetectionJob,
+    diagnostics?.latestAttributionJob,
+    diagnostics?.latestSynthesisJob,
+  ]
+
+  return jobs.find((job) => job && isActiveJobStatus(job.status)) ?? null
+}
+
+function getStageStatus({
+  job,
+  fallbackStatus,
+  isLocallyRunning,
+}: {
+  job?: { status: string } | null
+  fallbackStatus: string
+  isLocallyRunning: boolean
+}) {
+  if (job && isActiveJobStatus(job.status)) {
+    return job.status
   }
-  return new Date(`${value.replace(' ', 'T')}Z`)
+  if (isLocallyRunning) {
+    return 'running'
+  }
+  return job?.status ?? fallbackStatus
+}
+
+function getStageTimerJob({
+  job,
+  isLocallyRunning,
+  runningStartedAt,
+}: {
+  job?: { status: string; createdAt: string } | null
+  isLocallyRunning: boolean
+  runningStartedAt: string | null
+}) {
+  if (job && isActiveJobStatus(job.status)) {
+    return job
+  }
+  if (isLocallyRunning && runningStartedAt) {
+    return {
+      status: 'running',
+      createdAt: runningStartedAt,
+    }
+  }
+  return null
 }

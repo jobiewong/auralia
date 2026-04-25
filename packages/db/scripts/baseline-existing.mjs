@@ -152,6 +152,7 @@ function completePreWorksSchema(db) {
       document_id TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'pending',
       output_path TEXT,
+      completed_at TEXT,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE,
@@ -180,6 +181,7 @@ function completePreWorksSchema(db) {
       status TEXT NOT NULL,
       document_id TEXT,
       error_message TEXT,
+      completed_at TEXT,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY(document_id) REFERENCES documents(id) ON DELETE SET NULL

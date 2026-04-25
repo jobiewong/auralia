@@ -5,6 +5,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
+from auralia_api.storage.pipeline_resets import reset_after_cast_detection_rerun
 from auralia_api.storage.works import ensure_work_schema, touch_work_for_document
 
 MIGRATION_SQL = """
@@ -161,18 +162,11 @@ def document_has_active_cast(*, sqlite_path: str, document_id: str) -> bool:
 
 def delete_generated_cast_for_document(
     *, sqlite_path: str, document_id: str
-) -> int:
+) -> dict[str, int]:
     with _connect(sqlite_path) as conn:
-        cur = conn.execute(
-            """
-            DELETE FROM document_cast_members
-            WHERE document_id = ? AND manually_edited = 0
-            """,
-            (document_id,),
-        )
-        deleted = cur.rowcount
-        _sync_document_roster(conn, document_id=document_id)
-        return deleted
+        counts = reset_after_cast_detection_rerun(conn, document_id=document_id)
+        touch_work_for_document(conn, document_id=document_id)
+        return counts
 
 
 def insert_cast_detection_job(
@@ -189,13 +183,23 @@ def insert_cast_detection_job(
         conn.execute(
             """
             INSERT INTO cast_detection_jobs (
-                id, document_id, status, model_name, stats, error_report, completed_at
+                id,
+                document_id,
+                status,
+                model_name,
+                stats,
+                error_report,
+                completed_at,
+                created_at,
+                updated_at
             ) VALUES (
                 ?, ?, ?, ?, ?, ?,
                 CASE
                     WHEN ? IN ('failed', 'completed') THEN CURRENT_TIMESTAMP
                     ELSE NULL
-                END
+                END,
+                CURRENT_TIMESTAMP,
+                CURRENT_TIMESTAMP
             )
             """,
             (

@@ -6,10 +6,11 @@ import {
   text,
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
+import { sql } from "drizzle-orm";
 
 const timestamps = {
-  createdAt: text("created_at").notNull().default("CURRENT_TIMESTAMP"),
-  updatedAt: text("updated_at").notNull().default("CURRENT_TIMESTAMP"),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 };
 
 export const works = sqliteTable("works", {
@@ -51,6 +52,7 @@ export const ingestionJobs = sqliteTable(
     status: text("status").notNull(),
     documentId: text("document_id").references(() => documents.id, { onDelete: "set null" }),
     errorMessage: text("error_message"),
+    completedAt: text("completed_at"),
     ...timestamps,
   },
   (table) => [
@@ -83,6 +85,7 @@ export const segmentationJobs = sqliteTable(
     modelName: text("model_name"),
     stats: text("stats"), // JSON: retries per chunk, token counts, timings
     errorReport: text("error_report"), // JSON: machine-readable validator report on failure
+    completedAt: text("completed_at"),
     ...timestamps,
   },
   (table) => [index("idx_segmentation_jobs_document_status").on(table.documentId, table.status)],
@@ -163,7 +166,7 @@ export const castMemberEvidence = sqliteTable(
     surfaceText: text("surface_text").notNull(),
     evidenceText: text("evidence_text").notNull(),
     confidence: real("confidence").notNull().default(1),
-    createdAt: text("created_at").notNull().default("CURRENT_TIMESTAMP"),
+    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   },
   (table) => [index("idx_cast_member_evidence_member").on(table.castMemberId)],
 );
@@ -201,6 +204,7 @@ export const synthesisJobs = sqliteTable(
     documentId: text("document_id").notNull().references(() => documents.id, { onDelete: "cascade" }),
     status: text("status", { enum: ["pending", "running", "failed", "completed"] }).notNull().default("pending"),
     outputPath: text("output_path"),
+    completedAt: text("completed_at"),
     ...timestamps,
   },
   (table) => [index("idx_synthesis_jobs_document_status").on(table.documentId, table.status)],

@@ -156,22 +156,19 @@ function RouteComponent() {
           <p>
             Cast:
             <span className="text-foreground/50 ml-4">
-              {formatCount(diagnostics.castCounts.total, 'member')}
+              {formatCount(diagnostics.castCounts.total)}
             </span>
           </p>
           <p>
             Evidence:
             <span className="text-foreground/50 ml-4">
-              {formatCount(
-                getStatNumber(castStats, 'explicit_evidence_count'),
-                'tag',
-              )}
+              {formatCount(getStatNumber(castStats, 'explicit_evidence_count'))}
             </span>
           </p>
           <p>
             Review:
             <span className="text-foreground/50 ml-4">
-              {formatCount(diagnostics.castCounts.needsReview, 'member')}
+              {formatCount(diagnostics.castCounts.needsReview)}
             </span>
           </p>
         </section>
@@ -189,7 +186,7 @@ function RouteComponent() {
                 <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                   <p>{speaker}</p>
                   <p className="text-foreground/50">
-                    {formatCount(speakerCounts.get(speaker) ?? 0, 'span')}
+                    {formatCount(speakerCounts.get(speaker) ?? 0)}
                   </p>
                 </div>
                 <div className="flex flex-wrap items-baseline gap-3 text-foreground/50">
@@ -227,7 +224,6 @@ function RouteComponent() {
                   <p className="text-foreground/50">
                     {formatCount(
                       speakerCounts.get(character.canonicalName) ?? 0,
-                      'span',
                     )}
                   </p>
                 </div>

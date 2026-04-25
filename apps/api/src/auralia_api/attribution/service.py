@@ -11,6 +11,7 @@ from auralia_api.validators.reports import build_validation_report
 from .parser import AttributionParseError, parse_window_attributions
 from .pre_pass import resolve_dialogue_spans_deterministically
 from .prompts import WINDOW_SYSTEM_PROMPT, build_window_user_prompt
+from .roster import extract_character_roster
 from .storage import (
     AlreadyAttributedError,
     DocumentNotFoundError,
@@ -19,6 +20,7 @@ from .storage import (
     insert_attribution_job,
     insert_attributions,
     load_document_with_spans,
+    save_document_roster,
     update_attribution_job,
 )
 from .validators import run_all_attribution_validators
@@ -83,9 +85,14 @@ def attribute_document(
 
     try:
         cast_start = time.perf_counter_ns()
-        roster = require_cast_roster(
+        roster, roster_usage = _load_or_extract_roster(
+            document=document,
             sqlite_path=sqlite_path,
-            document_id=document["id"],
+            model_name=model_name,
+            base_url=base_url,
+            timeout_seconds=timeout_seconds,
+            max_retries=max_retries,
+            has_dialogue=bool(dialogue_ids),
         )
         stage_timings_ms["load_cast"] = int(
             (time.perf_counter_ns() - cast_start) / 1_000_000
@@ -171,8 +178,9 @@ def attribute_document(
                 deterministic_resolved=len(resolved),
                 llm_resolved=len(merged) - len(resolved),
                 windows=len(windows),
-                prompt_eval_count=llm_prompt_eval,
-                eval_count=llm_eval,
+                prompt_eval_count=llm_prompt_eval
+                + int(roster_usage.get("prompt_eval_count") or 0),
+                eval_count=llm_eval + int(roster_usage.get("eval_count") or 0),
                 timings_ms=stage_timings_ms,
             )
             update_attribution_job(
@@ -203,8 +211,9 @@ def attribute_document(
             deterministic_resolved=len(resolved),
             llm_resolved=len(merged) - len(resolved),
             windows=len(windows),
-            prompt_eval_count=llm_prompt_eval,
-            eval_count=llm_eval,
+            prompt_eval_count=llm_prompt_eval
+            + int(roster_usage.get("prompt_eval_count") or 0),
+            eval_count=llm_eval + int(roster_usage.get("eval_count") or 0),
             timings_ms=stage_timings_ms,
         )
         update_attribution_job(
@@ -338,6 +347,38 @@ def _attribute_window_with_retries(
     if last_error.raw_response is None and last_raw is not None:
         last_error.raw_response = last_raw
     raise last_error
+
+
+def _load_or_extract_roster(
+    *,
+    document: dict[str, Any],
+    sqlite_path: str,
+    model_name: str,
+    base_url: str,
+    timeout_seconds: float,
+    max_retries: int,
+    has_dialogue: bool,
+) -> tuple[list[dict[str, Any]], dict[str, int | None]]:
+    try:
+        return require_cast_roster(
+            sqlite_path=sqlite_path,
+            document_id=document["id"],
+        ), {"prompt_eval_count": 0, "eval_count": 0}
+    except CastRequiredError:
+        roster, usage = extract_character_roster(
+            document_text=document["text"],
+            has_dialogue=has_dialogue,
+            model=model_name,
+            base_url=base_url,
+            timeout_seconds=timeout_seconds,
+            max_retries=max_retries,
+        )
+        save_document_roster(
+            sqlite_path=sqlite_path,
+            document_id=document["id"],
+            roster=roster,
+        )
+        return roster, usage
 
 
 def _merge_attributions(

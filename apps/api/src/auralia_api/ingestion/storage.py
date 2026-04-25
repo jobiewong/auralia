@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS ingestion_jobs (
   status TEXT NOT NULL,
   document_id TEXT,
   error_message TEXT,
+  completed_at TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY(document_id) REFERENCES documents(id) ON DELETE SET NULL
@@ -49,6 +50,7 @@ def _connect(sqlite_path: str) -> sqlite3.Connection:
     conn.execute("PRAGMA foreign_keys = ON;")
     conn.executescript(MIGRATION_SQL)
     _ensure_documents_columns(conn)
+    _ensure_ingestion_jobs_completed_at(conn)
     ensure_work_schema(conn)
     return conn
 
@@ -59,6 +61,12 @@ def _ensure_documents_columns(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE documents ADD COLUMN source_metadata TEXT;")
     if "roster" not in cols:
         conn.execute("ALTER TABLE documents ADD COLUMN roster TEXT;")
+
+
+def _ensure_ingestion_jobs_completed_at(conn: sqlite3.Connection) -> None:
+    cols = {row["name"] for row in conn.execute("PRAGMA table_info(ingestion_jobs);")}
+    if "completed_at" not in cols:
+        conn.execute("ALTER TABLE ingestion_jobs ADD COLUMN completed_at TEXT;")
 
 
 def insert_document(*, sqlite_path: str, document: dict) -> None:
@@ -104,9 +112,20 @@ def insert_ingestion_job(*, sqlite_path: str, job: dict) -> None:
                 source_ref,
                 status,
                 document_id,
-                error_message
+                error_message,
+                completed_at,
+                created_at,
+                updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?)
+            VALUES (
+                ?, ?, ?, ?, ?, ?,
+                CASE
+                    WHEN ? IN ('failed', 'completed') THEN CURRENT_TIMESTAMP
+                    ELSE NULL
+                END,
+                CURRENT_TIMESTAMP,
+                CURRENT_TIMESTAMP
+            )
             """,
             (
                 job["id"],
@@ -115,5 +134,6 @@ def insert_ingestion_job(*, sqlite_path: str, job: dict) -> None:
                 job["status"],
                 job.get("document_id"),
                 job.get("error_message"),
+                job["status"],
             ),
         )

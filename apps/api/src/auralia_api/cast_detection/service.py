@@ -52,13 +52,15 @@ def detect_cast(
         sqlite_path=sqlite_path, document_id=document_id
     )
     force_wipe: dict[str, int] | None = None
-    if document_has_active_cast(sqlite_path=sqlite_path, document_id=document_id):
-        if not force:
-            raise AlreadyCastDetectedError(f"document already has cast: {document_id}")
-        deleted = delete_generated_cast_for_document(
+    has_active_cast = document_has_active_cast(
+        sqlite_path=sqlite_path, document_id=document_id
+    )
+    if has_active_cast and not force:
+        raise AlreadyCastDetectedError(f"document already has cast: {document_id}")
+    if force:
+        force_wipe = delete_generated_cast_for_document(
             sqlite_path=sqlite_path, document_id=document_id
         )
-        force_wipe = {"generated_cast_deleted": deleted}
 
     job_id = f"cast_{uuid4().hex[:12]}"
     insert_cast_detection_job(

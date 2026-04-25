@@ -15,22 +15,35 @@ export async function ingestAo3Chapter(
   })
 }
 
-export async function runSegmentation(documentId: string) {
+export async function runSegmentation(
+  documentId: string,
+  options?: { force?: boolean },
+) {
   return postJson<{
     segmentation_job: { id: string; document_id: string; status: string }
-  }>('/api/segment', { document_id: documentId })
+  }>(withForce('/api/segment', options?.force), { document_id: documentId })
 }
 
-export async function runCastDetection(documentId: string) {
+export async function runCastDetection(
+  documentId: string,
+  options?: { force?: boolean, useLLM?: boolean },
+) {
   return postJson<{
     cast_detection_job: { id: string; document_id: string; status: string }
-  }>('/api/detect-cast', { document_id: documentId })
+  }>(withForce('/api/detect-cast', options?.force), { document_id: documentId, use_llm: options?.useLLM })
 }
 
-export async function runAttribution(documentId: string) {
+export async function runAttribution(
+  documentId: string,
+  options?: { force?: boolean },
+) {
   return postJson<{
     attribution_job: { id: string; document_id: string; status: string }
-  }>('/api/attribute', { document_id: documentId })
+  }>(withForce('/api/attribute', options?.force), { document_id: documentId })
+}
+
+function withForce(path: string, force = false) {
+  return force ? `${path}?force=true` : path
 }
 
 async function postJson<T>(path: string, body: unknown): Promise<T> {

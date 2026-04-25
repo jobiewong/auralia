@@ -8,13 +8,26 @@ import { useMemo, useState } from 'react'
 import { BracketButton } from '~/components/bracket-button'
 
 import { Play } from '~/components/icons/play'
+import { Button } from '~/components/ui/button'
 import type { ComboboxOption } from '~/components/ui/combobox-custom'
 import { Combobox } from '~/components/ui/combobox-custom'
 import { ConfirmationButton } from '~/components/ui/confirmation-button'
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '~/components/ui/dialog'
 import type { DocumentSpan } from '~/db-collections'
 import { useDocumentDiagnostics, useDocumentSpans } from '~/db-collections'
 import { updateSpanAttribution } from '~/db/documents'
-import { formatElapsed, useElapsedSeconds } from '~/hooks/use-elapsed-seconds'
+import {
+  formatElapsed,
+  useElapsedSecondsFromTimestamp,
+} from '~/hooks/use-elapsed-seconds'
 import {
   runAttribution,
   runCastDetection,
@@ -51,9 +64,15 @@ function RouteComponent() {
   const [runningStage, setRunningStage] = useState<
     'segmentation' | 'cast detection' | 'attribution' | null
   >(null)
-  const [startedAt, setStartedAt] = useState<number | null>(null)
   const [pipelineError, setPipelineError] = useState<string | null>(null)
-  const elapsed = useElapsedSeconds(startedAt)
+  const [confirmRerunStage, setConfirmRerunStage] = useState<
+    'segmentation' | 'cast detection' | null
+  >(null)
+  const activePipelineJob = getActivePipelineJob(diagnostics)
+  const isPipelineBusy = runningStage !== null || activePipelineJob !== null
+  const elapsed = useElapsedSecondsFromTimestamp(
+    activePipelineJob?.createdAt ?? null,
+  )
   const speakerOptions = useMemo(
     () => getSpeakerOptions(diagnostics?.document.roster, spans),
     [diagnostics?.document.roster, spans],
@@ -70,13 +89,10 @@ function RouteComponent() {
   const hasCompletedAttribution =
     diagnostics?.latestAttributionJob?.status === 'completed'
   const hasCompletedCastDetection =
-    diagnostics?.latestCastDetectionJob?.status === 'completed' ||
-    (diagnostics?.castCounts.total ?? 0) > 0
-  const canRunCastDetection = hasCompletedSegmentation && runningStage === null
+    diagnostics?.latestCastDetectionJob?.status === 'completed'
+  const canRunCastDetection = hasCompletedSegmentation && !isPipelineBusy
   const canRunAttribution =
-    hasCompletedSegmentation &&
-    hasCompletedCastDetection &&
-    runningStage === null
+    hasCompletedSegmentation && hasCompletedCastDetection && !isPipelineBusy
 
   async function refreshDocumentState() {
     await Promise.all([
@@ -91,13 +107,14 @@ function RouteComponent() {
     ])
   }
 
-  async function handleRunSegmentation() {
+  async function handleRunSegmentation(options?: { force?: boolean }) {
     setRunningStage('segmentation')
-    setStartedAt(Date.now())
     setPipelineError(null)
 
     try {
-      await runSegmentation(documentId)
+      const request = runSegmentation(documentId, options)
+      window.setTimeout(() => void refreshDocumentState(), 250)
+      await request
       await refreshDocumentState()
     } catch (err) {
       setPipelineError(
@@ -105,11 +122,10 @@ function RouteComponent() {
       )
     } finally {
       setRunningStage(null)
-      setStartedAt(null)
     }
   }
 
-  async function handleRunAttribution() {
+  async function handleRunAttribution(options?: { force?: boolean }) {
     if (!hasCompletedSegmentation) {
       setPipelineError('Run segmentation before attribution.')
       return
@@ -120,11 +136,12 @@ function RouteComponent() {
     }
 
     setRunningStage('attribution')
-    setStartedAt(Date.now())
     setPipelineError(null)
 
     try {
-      await runAttribution(documentId)
+      const request = runAttribution(documentId, options)
+      window.setTimeout(() => void refreshDocumentState(), 250)
+      await request
       await refreshDocumentState()
     } catch (err) {
       setPipelineError(
@@ -132,22 +149,22 @@ function RouteComponent() {
       )
     } finally {
       setRunningStage(null)
-      setStartedAt(null)
     }
   }
 
-  async function handleRunCastDetection() {
+  async function handleRunCastDetection(options?: { force?: boolean }) {
     if (!hasCompletedSegmentation) {
       setPipelineError('Run segmentation before cast detection.')
       return
     }
 
     setRunningStage('cast detection')
-    setStartedAt(Date.now())
     setPipelineError(null)
 
     try {
-      await runCastDetection(documentId)
+      const request = runCastDetection(documentId, options)
+      window.setTimeout(() => void refreshDocumentState(), 250)
+      await request
       await refreshDocumentState()
     } catch (err) {
       setPipelineError(
@@ -155,7 +172,17 @@ function RouteComponent() {
       )
     } finally {
       setRunningStage(null)
-      setStartedAt(null)
+    }
+  }
+
+  async function handleConfirmRerun() {
+    const stage = confirmRerunStage
+    setConfirmRerunStage(null)
+
+    if (stage === 'segmentation') {
+      await handleRunSegmentation({ force: true })
+    } else if (stage === 'cast detection') {
+      await handleRunCastDetection({ force: true })
     }
   }
 
@@ -226,7 +253,6 @@ function RouteComponent() {
               {formatCount(
                 diagnostics?.spanCounts.dialogue ??
                   countByType(spans, 'dialogue'),
-                'dialogue',
               )}
             </dd>
             <dt className="text-foreground/50">Narration</dt>
@@ -234,7 +260,6 @@ function RouteComponent() {
               {formatCount(
                 diagnostics?.spanCounts.narration ??
                   countByType(spans, 'narration'),
-                'narration',
               )}
             </dd>
           </dl>
@@ -274,38 +299,65 @@ function RouteComponent() {
             </dd>
           </dl>
         </div>
-        <div className="mt-4 flex gap-4">
+        {/* <div className="mt-4 flex gap-4">
           <ConfirmationButton
             className="w-52 text-xl"
-            disabled={runningStage !== null || hasCompletedSegmentation}
-            onLongPress={handleRunSegmentation}
+            disabled={isPipelineBusy}
+            isRunning={runningStage === 'segmentation'}
+            onClick={
+              hasCompletedSegmentation
+                ? undefined
+                : () => handleRunSegmentation()
+            }
+            onLongPress={() =>
+              hasCompletedSegmentation
+                ? setConfirmRerunStage('segmentation')
+                : handleRunSegmentation()
+            }
           >
             <Play className="size-4" />{' '}
             {hasCompletedSegmentation ? 'Segmented' : 'Run Segmentation'}
           </ConfirmationButton>
           <ConfirmationButton
             className="w-52 text-xl"
-            disabled={!canRunCastDetection || hasCompletedCastDetection}
-            onLongPress={handleRunCastDetection}
+            disabled={!canRunCastDetection}
+            isRunning={runningStage === 'cast detection'}
+            onClick={
+              hasCompletedCastDetection
+                ? undefined
+                : () => handleRunCastDetection()
+            }
+            onLongPress={() =>
+              hasCompletedCastDetection
+                ? setConfirmRerunStage('cast detection')
+                : handleRunCastDetection()
+            }
           >
             <Play className="size-4" />{' '}
             {hasCompletedCastDetection ? 'Cast Detected' : 'Detect Cast'}
           </ConfirmationButton>
           <ConfirmationButton
             className="w-52 text-xl"
-            disabled={!canRunAttribution || hasCompletedAttribution}
-            onLongPress={handleRunAttribution}
+            disabled={!canRunAttribution}
+            isRunning={runningStage === 'attribution'}
+            onClick={
+              hasCompletedAttribution ? undefined : () => handleRunAttribution()
+            }
+            onLongPress={() =>
+              handleRunAttribution({ force: hasCompletedAttribution })
+            }
           >
             <Play className="size-4" />{' '}
             {hasCompletedAttribution ? 'Attributed' : 'Run Attribution'}
           </ConfirmationButton>
-          {runningStage ? (
+          {activePipelineJob ? (
             <p className="flex items-center gap-2 font-serif text-lg text-foreground/60">
               <Clock className="size-5" />
-              {runningStage} running for {formatElapsed(elapsed)}
+              {activePipelineJob.label} {activePipelineJob.status} for{' '}
+              {formatElapsed(elapsed)}
             </p>
           ) : null}
-        </div>
+        </div> */}
         {!hasCompletedSegmentation ? (
           <p className="mt-3 font-serif text-foreground/60">
             Cast detection unlocks after segmentation has completed.
@@ -321,6 +373,18 @@ function RouteComponent() {
             {pipelineError}
           </p>
         ) : null}
+        <PipelineRerunDialog
+          stage={confirmRerunStage}
+          isRunning={
+            runningStage === 'segmentation' || runningStage === 'cast detection'
+          }
+          onOpenChange={(open) => {
+            if (!open) {
+              setConfirmRerunStage(null)
+            }
+          }}
+          onConfirm={handleConfirmRerun}
+        />
       </section>
 
       <section className="flex flex-wrap items-center gap-4 font-serif sticky -mx-2 px-2 py-1 top-4 bg-background">
@@ -377,6 +441,63 @@ function RouteComponent() {
   )
 }
 
+function PipelineRerunDialog({
+  stage,
+  isRunning,
+  onOpenChange,
+  onConfirm,
+}: {
+  stage: 'segmentation' | 'cast detection' | null
+  isRunning: boolean
+  onOpenChange: (open: boolean) => void
+  onConfirm: () => Promise<void>
+}) {
+  const copy =
+    stage === 'segmentation'
+      ? {
+          title: 'Re-run segmentation',
+          description:
+            'This will delete and regenerate spans, reset cast detection, attribution, and synthesis-derived outputs. Manual cast edits will be preserved, but cast detection must be run again.',
+          confirmLabel: 'Re-run Segmentation',
+        }
+      : {
+          title: 'Re-run cast detection',
+          description:
+            'This will delete regenerated cast evidence, reset attribution and synthesis-derived outputs, then detect cast again. Manual cast edits and deletions will be preserved.',
+          confirmLabel: 'Re-run Cast Detection',
+        }
+
+  return (
+    <Dialog open={stage !== null} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{copy.title}</DialogTitle>
+          <DialogDescription>{copy.description}</DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button
+            disabled={isRunning}
+            onClick={onConfirm}
+            size="lg"
+            className="bg-orange-500 text-orange-950 disabled:opacity-50 hover:bg-orange-500/70 hover:text-orange-950"
+          >
+            {isRunning ? 'Running' : copy.confirmLabel}
+          </Button>
+          <DialogClose asChild>
+            <Button
+              disabled={isRunning}
+              size="lg"
+              className="text-orange-500 border-orange-500 hover:bg-orange-500 hover:text-orange-950"
+            >
+              Cancel
+            </Button>
+          </DialogClose>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function FilterButton({
   filter,
   value,
@@ -393,6 +514,30 @@ function FilterButton({
       {children}
     </BracketButton>
   )
+}
+
+function getActivePipelineJob(
+  diagnostics: ReturnType<typeof useDocumentDiagnostics>,
+) {
+  const jobs = [
+    { label: 'ingestion', job: diagnostics?.latestIngestionJob },
+    { label: 'segmentation', job: diagnostics?.latestSegmentationJob },
+    { label: 'cast detection', job: diagnostics?.latestCastDetectionJob },
+    { label: 'attribution', job: diagnostics?.latestAttributionJob },
+    { label: 'synthesis', job: diagnostics?.latestSynthesisJob },
+  ]
+
+  const active = jobs.find(
+    ({ job }) => job && (job.status === 'pending' || job.status === 'running'),
+  )
+
+  return active?.job
+    ? {
+        label: active.label,
+        status: active.job.status,
+        createdAt: active.job.createdAt,
+      }
+    : null
 }
 
 function Span({

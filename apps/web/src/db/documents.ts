@@ -158,8 +158,10 @@ export const getDocumentDiagnostics = createServerFn({ method: 'GET' })
         castDetectionJobs,
         documents,
         documentCastMembers,
+        ingestionJobs,
         segmentationJobs,
         spans,
+        synthesisJobs,
         works,
       },
       { and, desc, eq },
@@ -229,12 +231,26 @@ export const getDocumentDiagnostics = createServerFn({ method: 'GET' })
         modelName: segmentationJobs.modelName,
         stats: segmentationJobs.stats,
         errorReport: segmentationJobs.errorReport,
+        completedAt: segmentationJobs.completedAt,
         createdAt: segmentationJobs.createdAt,
         updatedAt: segmentationJobs.updatedAt,
       })
       .from(segmentationJobs)
       .where(eq(segmentationJobs.documentId, data.documentId))
       .orderBy(desc(segmentationJobs.updatedAt))
+      .get()
+    const latestIngestionJob = db
+      .select({
+        id: ingestionJobs.id,
+        status: ingestionJobs.status,
+        errorReport: ingestionJobs.errorMessage,
+        completedAt: ingestionJobs.completedAt,
+        createdAt: ingestionJobs.createdAt,
+        updatedAt: ingestionJobs.updatedAt,
+      })
+      .from(ingestionJobs)
+      .where(eq(ingestionJobs.documentId, data.documentId))
+      .orderBy(desc(ingestionJobs.updatedAt))
       .get()
     const latestAttributionJob = db
       .select({
@@ -265,6 +281,19 @@ export const getDocumentDiagnostics = createServerFn({ method: 'GET' })
       .from(castDetectionJobs)
       .where(eq(castDetectionJobs.documentId, data.documentId))
       .orderBy(desc(castDetectionJobs.updatedAt))
+      .get()
+    const latestSynthesisJob = db
+      .select({
+        id: synthesisJobs.id,
+        status: synthesisJobs.status,
+        outputPath: synthesisJobs.outputPath,
+        completedAt: synthesisJobs.completedAt,
+        createdAt: synthesisJobs.createdAt,
+        updatedAt: synthesisJobs.updatedAt,
+      })
+      .from(synthesisJobs)
+      .where(eq(synthesisJobs.documentId, data.documentId))
+      .orderBy(desc(synthesisJobs.updatedAt))
       .get()
 
     const dialogueCount = spanRows.filter(
@@ -323,9 +352,11 @@ export const getDocumentDiagnostics = createServerFn({ method: 'GET' })
           (character) => character.manuallyEdited,
         ).length,
       },
+      latestIngestionJob: latestIngestionJob ?? null,
       latestSegmentationJob: latestSegmentationJob ?? null,
       latestCastDetectionJob: latestCastDetectionJob ?? null,
       latestAttributionJob: latestAttributionJob ?? null,
+      latestSynthesisJob: latestSynthesisJob ?? null,
     }
   })
 

@@ -231,13 +231,17 @@ def insert_attribution_job(
                 model_name,
                 stats,
                 error_report,
-                completed_at
+                completed_at,
+                created_at,
+                updated_at
             ) VALUES (
                 ?, ?, ?, ?, ?, ?,
                 CASE
                     WHEN ? IN ('failed', 'completed') THEN CURRENT_TIMESTAMP
                     ELSE NULL
-                END
+                END,
+                CURRENT_TIMESTAMP,
+                CURRENT_TIMESTAMP
             )
             """,
             (

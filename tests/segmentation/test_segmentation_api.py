@@ -121,33 +121,212 @@ def test_segment_endpoint_force_rewipes_spans_and_cascades_attributions(
     first_spans = first.json()["spans"]
     assert first.json()["force_wipe"] is None
 
-    monkeypatch.setattr(
-        "auralia_api.attribution.service.extract_character_roster",
-        lambda **kwargs: (
-            [
-                {"canonical_name": "Harry", "aliases": ["Harry"], "descriptor": ""},
-                {"canonical_name": "Ron", "aliases": ["Ron"], "descriptor": ""},
-            ],
-            {"prompt_eval_count": 0, "eval_count": 0, "duration_ms": 0},
-        ),
-    )
-    attr = client.post("/api/attribute", json={"document_id": doc_id})
-    assert attr.status_code == 201
+    cast = client.post("/api/detect-cast", json={"document_id": doc_id})
+    assert cast.status_code == 201, cast.text
+
     dialogue_count = sum(1 for s in first_spans if s["type"] == "dialogue")
+
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            CREATE TABLE attribution_jobs (
+                id TEXT PRIMARY KEY,
+                document_id TEXT NOT NULL,
+                status TEXT NOT NULL,
+                model_name TEXT,
+                stats TEXT,
+                error_report TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP NOT NULL,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP NOT NULL
+            )
+            """
+        )
+        conn.executemany(
+            """
+            INSERT INTO attributions (
+                id,
+                span_id,
+                speaker,
+                speaker_confidence,
+                needs_review
+            )
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    f"attr_{span['id']}",
+                    span["id"],
+                    "Harry",
+                    1.0,
+                    0,
+                )
+                for span in first_spans
+                if span["type"] == "dialogue"
+            ],
+        )
+        conn.execute(
+            """
+            INSERT INTO attribution_jobs (
+                id,
+                document_id,
+                status,
+                model_name,
+                stats,
+                error_report
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            ("attr_job_1", doc_id, "completed", None, "{}", None),
+        )
+        conn.execute(
+            """
+            INSERT INTO document_cast_members (
+                id,
+                document_id,
+                canonical_name,
+                aliases,
+                descriptor,
+                confidence,
+                needs_review,
+                source,
+                manually_edited,
+                manually_deleted
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "manual_cast_hermione",
+                doc_id,
+                "Hermione",
+                '["Hermione"]',
+                "manual edit",
+                1.0,
+                0,
+                "manual",
+                1,
+                0,
+            ),
+        )
+        conn.execute(
+            """
+            INSERT INTO document_cast_members (
+                id,
+                document_id,
+                canonical_name,
+                aliases,
+                descriptor,
+                confidence,
+                needs_review,
+                source,
+                manually_edited,
+                manually_deleted
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "manual_cast_neville",
+                doc_id,
+                "Neville",
+                '["Neville"]',
+                "",
+                1.0,
+                0,
+                "manual",
+                1,
+                1,
+            ),
+        )
+        conn.execute(
+            """
+            CREATE TABLE synthesis_jobs (
+                id TEXT PRIMARY KEY,
+                document_id TEXT NOT NULL,
+                status TEXT NOT NULL,
+                output_path TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP NOT NULL,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE synthesis_segments (
+                id TEXT PRIMARY KEY,
+                job_id TEXT NOT NULL,
+                span_id TEXT NOT NULL,
+                voice_id TEXT NOT NULL,
+                audio_path TEXT NOT NULL,
+                start INTEGER NOT NULL,
+                end INTEGER NOT NULL,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP NOT NULL,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            "INSERT INTO synthesis_jobs (id, document_id, status) VALUES (?, ?, ?)",
+            ("syn_job_1", doc_id, "completed"),
+        )
+        conn.execute(
+            """
+            INSERT INTO synthesis_segments (
+                id, job_id, span_id, voice_id, audio_path, start, end
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "syn_seg_1",
+                "syn_job_1",
+                first_spans[0]["id"],
+                "voice_1",
+                "/tmp/audio.wav",
+                0,
+                1,
+            ),
+        )
 
     forced = client.post(
         "/api/segment?force=true", json={"document_id": doc_id}
     )
     assert forced.status_code == 201, forced.text
     wipe = forced.json()["force_wipe"]
-    assert wipe == {
-        "spans_deleted": len(first_spans),
-        "attributions_cascaded": dialogue_count,
-    }
+    assert wipe["spans_deleted"] == len(first_spans)
+    assert wipe["attributions_cascaded"] == dialogue_count
+    assert wipe["attributions_deleted"] == dialogue_count
+    assert wipe["attribution_jobs_deleted"] == 1
+    assert wipe["cast_detection_jobs_deleted"] == 1
+    assert wipe["cast_evidence_deleted"] == len(cast.json()["evidence"])
+    assert wipe["generated_cast_deleted"] == len(cast.json()["cast"])
+    assert wipe["synthesis_jobs_deleted"] == 1
+    assert wipe["synthesis_segments_deleted"] == 1
 
     with sqlite3.connect(db_path) as conn:
         attr_rows = conn.execute("SELECT COUNT(*) FROM attributions").fetchone()[0]
+        attr_jobs = conn.execute("SELECT COUNT(*) FROM attribution_jobs").fetchone()[0]
+        cast_jobs = conn.execute(
+            "SELECT COUNT(*) FROM cast_detection_jobs"
+        ).fetchone()[0]
+        synthesis_jobs = conn.execute(
+            "SELECT COUNT(*) FROM synthesis_jobs"
+        ).fetchone()[0]
+        synthesis_segments = conn.execute(
+            "SELECT COUNT(*) FROM synthesis_segments"
+        ).fetchone()[0]
+        cast_rows = conn.execute(
+            """
+            SELECT canonical_name, manually_deleted
+            FROM document_cast_members
+            WHERE document_id = ?
+            ORDER BY canonical_name
+            """,
+            (doc_id,),
+        ).fetchall()
     assert attr_rows == 0
+    assert attr_jobs == 0
+    assert cast_jobs == 0
+    assert synthesis_jobs == 0
+    assert synthesis_segments == 0
+    assert cast_rows == [("Hermione", 0), ("Neville", 1)]
 
 
 def test_segment_endpoint_handles_narration_only(monkeypatch, tmp_path):

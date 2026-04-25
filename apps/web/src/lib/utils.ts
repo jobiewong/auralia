@@ -48,10 +48,19 @@ export function parseWorkSourceMetadata(sourceMetadata: string | null) {
   }
 }
 
-export function formatDate(value: string) {
+export function formatDate(value: string, withTime?: boolean) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) {
     return value
+  }
+  if (withTime) {
+    return new Intl.DateTimeFormat('en-GB', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(date)
   }
   return new Intl.DateTimeFormat('en-GB', {
     day: '2-digit',
@@ -68,7 +77,7 @@ export function formatSpanCount(spanCount: number) {
   return `${new Intl.NumberFormat('en-GB').format(spanCount)}`
 }
 
-export function formatCount(count: number, label: string) {
+export function formatCount(count: number) {
   return `${new Intl.NumberFormat('en-GB').format(count)}`
 }
 

@@ -22,6 +22,7 @@ class IngestAo3Request(BaseModel):
 class IngestionJobOut(BaseModel):
     id: str
     status: str
+    completed_at: str | None = None
 
 
 class CleanedDocumentOut(BaseModel):

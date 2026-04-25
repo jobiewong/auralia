@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'motion/react'
 import type { ReactNode } from 'react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useLongPress } from 'react-aria/useLongPress'
 import { cn } from '~/lib/utils'
 
@@ -9,27 +9,41 @@ export function ConfirmationButton({
   disabled = false,
   onClick,
   onLongPress,
+  isRunning = false,
   className,
 }: {
   children: ReactNode
   disabled?: boolean
   onClick?: () => void
-  onLongPress: () => void
+  onLongPress: () => void | Promise<void>
+  isRunning?: boolean
   className?: string
 }) {
-  const [buttonState, setButtonState] = useState<
-    'idle' | 'clicking' | 'complete'
-  >('idle')
+  const [isPressing, setIsPressing] = useState(false)
+  const mountedRef = useRef(true)
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
+
   const { longPressProps } = useLongPress({
     onLongPressStart: () => {
-      setButtonState('clicking')
+      setIsPressing(true)
     },
     onLongPressEnd: () => {
-      setButtonState('idle')
+      setIsPressing(false)
     },
     onLongPress: () => {
-      setButtonState('complete')
-      onLongPress()
+      setIsPressing(false)
+      void Promise.resolve()
+        .then(onLongPress)
+        .finally(() => {
+          if (mountedRef.current) {
+            setIsPressing(false)
+          }
+        })
     },
     threshold: 1000,
   })
@@ -45,7 +59,7 @@ export function ConfirmationButton({
       )}
       {...longPressProps}
     >
-      {buttonState === 'complete' ? (
+      {isRunning ? (
         <motion.div
           key="confirmed"
           className="relative z-10 size-full flex items-center gap-2 px-4 py-2 text-orange-500 bg-orange-950 text-center"
@@ -62,7 +76,7 @@ export function ConfirmationButton({
       )}
 
       <AnimatePresence>
-        {buttonState === 'clicking' ? (
+        {isPressing ? (
           <motion.div
             key="delete-indicator"
             className="pointer-events-none absolute inset-0 z-20"

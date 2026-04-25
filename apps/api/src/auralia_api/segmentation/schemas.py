@@ -24,6 +24,7 @@ class SegmentationJobOut(BaseModel):
     chunk_count: int
     model_name: str | None = None
     stats: dict[str, Any] | None = None
+    completed_at: str | None = None
 
 
 class SegmentResponse(BaseModel):

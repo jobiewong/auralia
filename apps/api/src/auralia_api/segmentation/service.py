@@ -15,6 +15,7 @@ from .storage import (
     insert_segmentation_job,
     insert_spans,
     load_document,
+    update_segmentation_job,
 )
 
 SEGMENTATION_METHOD = "deterministic_quote_v1"
@@ -53,12 +54,17 @@ def segment_document(
             raise AlreadySegmentedError(
                 f"document already segmented: {document_id}"
             )
-        spans_deleted, attrs_cascaded = delete_spans_for_document(
+        (
+            spans_deleted,
+            attrs_cascaded,
+            downstream_counts,
+        ) = delete_spans_for_document(
             sqlite_path=sqlite_path, document_id=document_id
         )
         force_wipe = {
             "spans_deleted": spans_deleted,
             "attributions_cascaded": attrs_cascaded,
+            **downstream_counts,
         }
 
     source_text: str = document["text"]
@@ -70,6 +76,16 @@ def segment_document(
     )
 
     job_id = f"seg_{uuid4().hex[:12]}"
+    insert_segmentation_job(
+        sqlite_path=sqlite_path,
+        job_id=job_id,
+        document_id=document["id"],
+        status="running",
+        chunk_count=0,
+        model_name=None,
+        stats=None,
+        error_report=None,
+    )
     stats = _build_stats(intervals)
 
     validation_payload = {
@@ -85,10 +101,9 @@ def segment_document(
             text_length=len(source_text),
             errors=errors,
         )
-        insert_segmentation_job(
+        update_segmentation_job(
             sqlite_path=sqlite_path,
             job_id=job_id,
-            document_id=document["id"],
             status="failed",
             chunk_count=0,
             model_name=None,
@@ -102,10 +117,9 @@ def segment_document(
         document_id=document["id"],
         spans=spans,
     )
-    insert_segmentation_job(
+    update_segmentation_job(
         sqlite_path=sqlite_path,
         job_id=job_id,
-        document_id=document["id"],
         status="completed",
         chunk_count=0,
         model_name=None,
