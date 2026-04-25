@@ -158,6 +158,7 @@ Build a fully local, character-aware audiobook pipeline that converts prose into
 - [x] Handle edge cases: narration-only, unmatched quotes, adjacent dialogues, multi-line dialogue, empty `""`
 - [x] Expose `/api/segment` endpoint (no LLM dependency)
 - [x] Add unit tests for segmenter invariants + API behavior
+- [x] Support `force=true` reruns with strict downstream invalidation: delete/regenerate spans, reset cast detection, attribution, and synthesis-derived outputs, and preserve manual cast edits/deletions.
 
 **Definition of Done**
 - AO3-normalized chapters produce contiguous validated spans persisted in SQLite with correct narration/dialogue labels and zero LLM calls.
@@ -169,6 +170,7 @@ Build a fully local, character-aware audiobook pipeline that converts prose into
 - `apps/api/src/auralia_api/segmentation/ollama_client.py` — retained unchanged for reuse by M4
 - `packages/db/drizzle/migrations/0003_m3_segmentation_jobs.sql` — `segmentation_jobs` table
 - `POST /api/segment` endpoint (document_id → spans + job record)
+- `POST /api/segment?force=true` rerun path that returns `force_wipe` counts for spans, attributions/jobs, generated cast/evidence, cast jobs, and synthesis rows/jobs where present.
 - Tests: `tests/segmentation/test_quote_segmenter.py`, `tests/segmentation/test_segmentation_api.py`, `tests/segmentation/test_ollama_client.py`
 
 **Known limitations (candidates for M8 hardening or a follow-up milestone)**
@@ -189,7 +191,7 @@ Build a fully local, character-aware audiobook pipeline that converts prose into
 
 **Objective:** Attribute speakers for dialogue spans and flag uncertain outputs.
 
-**Status:** 🟨 Refactoring — attribution remains functional, but roster discovery has been split into dedicated M4.5 cast detection so attribution consumes a persisted editable cast instead of extracting one internally.
+**Status:** ⏸ Paused / accepted for now — attribution works satisfactorily in local runtime testing. Benchmark fixture work and measured tuning are intentionally deferred.
 
 **Tasks**
 - [x] Character roster extraction (LLM pass A)
@@ -203,11 +205,12 @@ Build a fully local, character-aware audiobook pipeline that converts prose into
 - [x] Robustness hardening against real LLM drift (tolerant parsers, retry-with-feedback, raw-response surfacing)
 - [x] Live smoke run against real Qwen3 8B — endpoint returns attributions end-to-end
 - [x] Refactor target chosen: attribution should load persisted cast members and no longer use LLM roster extraction as the gatekeeper for deterministic speaker tags.
-- [ ] Benchmark fixture set (20 hand-labeled excerpts) + opt-in benchmark test
-- [ ] Prompt/threshold tuning based on measured accuracy
+- [ ] Deferred: benchmark fixture set (20 hand-labeled excerpts) + opt-in benchmark test
+- [ ] Deferred: prompt/threshold tuning based on measured accuracy
 
 **Definition of Done**
 - Attribution results are persisted with deterministic checks and review flags.
+- Runtime behavior has been validated locally and accepted for current product work.
 - Full spec in `docs/plans/M4_ATTRIBUTION.md` remains authoritative for the pipeline.
 
 **Delivered**
@@ -215,6 +218,7 @@ Build a fully local, character-aware audiobook pipeline that converts prose into
 - Drizzle migration `0004_m4_attribution_jobs.sql` + Python bootstrap mirror in `attribution/storage.py`
 - `POST /api/attribute` endpoint in `main.py`
 - Config additions (`auralia_api.config`): `attribution_model`, `attribution_confidence_threshold`, `attribution_max_window_dialogues`, `attribution_max_window_chars`, `attribution_max_gap_chars`, `attribution_max_retries`
+- Deferred evaluation work: benchmark fixtures, opt-in benchmark runner, and prompt/threshold tuning remain available for a later quality milestone.
 - Tests under `tests/attribution/`:
   - `test_pre_pass.py`, `test_windower.py`, `test_parser.py`, `test_prompts.py`, `test_roster.py`, `test_validators.py`, `test_service.py`, `test_attribution_storage.py`, `test_attribution_api.py`
 
@@ -244,6 +248,8 @@ Build a fully local, character-aware audiobook pipeline that converts prose into
 - [x] Keep `documents.roster` synchronized as a compatibility cache for the existing UI.
 - [x] Refactor attribution to consume persisted cast/legacy roster instead of extracting a roster internally.
 - [x] Add frontend cast-stage trigger and basic cast stats display.
+- [x] Add `force=true` reruns that delete regenerated cast/evidence and reset attribution/synthesis-derived outputs while preserving manual cast edits/deletions.
+- [x] Treat the latest cast detection job, not cast row count, as the Cast Detection completion signal so preserved manual rows do not make the stage appear complete.
 - [ ] Expand compact LLM alias merge evaluation fixtures (`Remus` ↔ `Mr Lupin`, surname-only references, titles).
 - [ ] Add manual merge UI for cast members and aliases.
 - [ ] Add benchmark report for explicit-speaker recall and alias-merge accuracy.
@@ -252,6 +258,32 @@ Build a fully local, character-aware audiobook pipeline that converts prose into
 - Running cast detection before attribution creates cast candidates from explicit speaker tags without sending the full chapter to the model.
 - Attribution refuses to run when no cast/legacy roster exists.
 - UI shows cast detection job status and lets manual cast edits remain authoritative.
+
+**Rerun/reset contract**
+- `POST /api/detect-cast?force=true` resets generated cast/evidence and downstream attribution/synthesis state before writing a new cast detection job.
+- Manual rows in `document_cast_members` with `manually_edited` or `manually_deleted` set are preserved.
+- Preserved manual cast rows remain available as editable user state, but the UI does not count them as successful cast detection unless the latest `cast_detection_jobs` row is `completed`.
+- Cast detection can run deterministically by default or with the compact LLM canonicalization pass when the request body includes `use_llm: true`.
+
+---
+
+## Pipeline Status UI + Rerun Controls
+
+**Objective:** Make pipeline progress resumable from persisted job state and make destructive reruns explicit.
+
+**Status:** ✅ Completed
+
+**Delivered**
+- Active stage timers are calculated from each job row's `created_at`, so timers survive browser tab closes/reopens.
+- Job completion timestamps are present across pipeline job tables: ingestion, segmentation, cast detection, attribution, and synthesis.
+- Completed stage buttons use `ConfirmationButton`; long-pressing Segmentation or Cast Detection opens a destructive confirmation dialog before calling the existing `force=true` rerun path.
+- The document status route and text route both refresh pipeline diagnostics during and after runs so fast deterministic stages clear `Running...` promptly.
+- Overall pipeline visualization resets downstream statuses after forced upstream reruns because stale downstream job rows are deleted.
+
+**Reset policy**
+- Re-run Segmentation: reset segmentation outputs and all downstream derived outputs: generated cast, cast evidence, attribution rows/jobs, synthesis rows/jobs, and cast detection jobs. Manual cast edits/deletions are preserved.
+- Re-run Cast Detection: reset generated cast/evidence and downstream attribution/synthesis rows/jobs. Manual cast edits/deletions are preserved.
+- Re-run Attribution: existing `force=true` behavior deletes attribution rows before re-attributing; synthesis reset on attribution rerun remains a follow-up if synthesis becomes active before a dedicated synthesis invalidation hook exists.
 
 ---
 
@@ -380,7 +412,7 @@ At end of each session, update:
 
 ### Current Session Log
 
-- **Last updated:** 2026-04-24
+- **Last updated:** 2026-04-25
 - **Completed in this session:**
   - [x] Delivered the full M4 attribution pipeline per `docs/plans/M4_ATTRIBUTION.md`: roster extraction (LLM), deterministic `X said`/`said X` pre-pass (closed verb list, roster-gated), conversation-window batching with locked anchors for alternation inference, cross-stage validators, persistence.
   - [x] Added Drizzle migration `0004_m4_attribution_jobs.sql` plus Python bootstrap mirror in `attribution/storage.py`.
@@ -402,15 +434,22 @@ At end of each session, update:
   - [x] Added deterministic explicit speaker-tag harvesting as the first source of cast candidates.
   - [x] Added new cast persistence/job/evidence tables and API shape.
   - [x] Began refactoring attribution to require persisted cast/legacy roster instead of running roster extraction.
-- **M4 status:** 🟨 nearly complete — pipeline, validators, API, tests, and live-LLM robustness all delivered. Benchmark fixture set + measured accuracy tuning still outstanding.
-- **Next immediate task:** run the cast-detection and attribution suites locally, then build the hand-labeled benchmark fixture set for explicit-speaker recall and alias-merge accuracy.
+  - [x] Added persisted job timers and completed-at fields across pipeline job tables for browser-resumable elapsed-time display.
+  - [x] Added strict downstream invalidation for forced segmentation and cast detection reruns, preserving manual cast edits/deletions while resetting stale generated/job state.
+  - [x] Added long-press confirmation dialogs for destructive Segmentation and Cast Detection reruns on the document status/text routes.
+  - [x] Updated pipeline status completion rules so manual cast rows do not make Cast Detection appear complete after upstream reset.
+  - [x] Confirmed local runtime attribution results are satisfactory for current product work.
+- **M4 status:** ⏸ paused / accepted for now — pipeline, validators, API, tests, and live-LLM robustness are delivered; benchmark fixture set and measured tuning are deferred to a later quality pass.
+- **Next immediate task:** move forward to the next product milestone. Run the full frontend/API validation commands locally with the complete PATH before merging this batch.
 - **Blockers:** none.
 - **Resume commands:**
   - `cd ~/repos/auralia`
   - `git pull`
-  - `pytest tests/attribution -q`
+  - `pytest tests/segmentation/test_segmentation_api.py tests/cast_detection/test_cast_detection_api.py -q`
   - `pytest tests/ -q`
   - `ruff check apps/api/src tests && mypy apps/api/src/auralia_api`
+  - `npm run db:migrate`
+  - `npm --workspace @auralia/web run typecheck`
 
 ---
 
@@ -421,7 +460,7 @@ At end of each session, update:
 - M2 Ingestion & Cleaning: ✅
 - M3 Segmentation (deterministic quote splitter): ✅
 - M4.5 Cast Detection: 🟨 (deterministic stage + persistence/API in progress)
-- M4 Attribution + Review Flags: 🟨 (being refactored to consume persisted cast)
+- M4 Attribution + Review Flags: ⏸ (accepted for runtime use; benchmarking deferred)
 - M5 Voice Registry API + Voice Management: ⬜
 - M6 React Review + Speaker Corrections: ⬜
 - M7 Synthesis + Assembly: ⬜

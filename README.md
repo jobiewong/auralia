@@ -109,29 +109,45 @@ Ensure your root `.env` (see `.env.example`) lists the web origin in `AURALIA_CO
    - Import AO3/local text
    - Remove HTML/tags and normalise whitespace
 
-2. **Segmentation (LLM Pass 1)**
-   - Use Ollama + Qwen3 8B to split text into ordered spans
+2. **Segmentation (Deterministic)**
+   - Use the quote-pair splitter to split text into ordered spans
    - Label spans as `narration` or `dialogue`
    - Track exact `start`/`end` offsets
 
-3. **Attribution (LLM Pass 2)**
+3. **Cast Detection**
+   - Harvest explicit speaker-tag evidence from segmented text
+   - Persist editable cast members and evidence rows
+   - Optionally run a compact LLM canonicalization pass with `use_llm=true`
+
+4. **Attribution**
    - Assign speakers for dialogue spans
+   - Consume the persisted cast/legacy roster as the allowed speaker set
    - Mark uncertain outputs as `UNKNOWN`
 
-4. **UI Review Gate (React)**
+5. **UI Review Gate (React)**
    - Resolve `UNKNOWN` speakers before synthesis
    - Assign VoxCPM voices to each character
    - Persist mappings in JSON
 
-5. **Synthesis & Assembly**
+6. **Synthesis & Assembly**
    - Generate per-span audio with VoxCPM
    - Concatenate segments with FFmpeg into final audiobook files
+
+### Pipeline reruns and downstream resets
+
+Completed pipeline stages can be re-run from the document status/text views by long-pressing the completed stage button and confirming the destructive rerun.
+
+- Re-running **Segmentation** deletes/regenerates spans and resets downstream cast detection, attribution, and synthesis-derived outputs.
+- Re-running **Cast Detection** deletes regenerated cast/evidence and resets attribution and synthesis-derived outputs.
+- Manual cast edits/deletions are preserved across both reruns, but preserved manual cast rows do not make Cast Detection appear complete. The UI treats the latest cast detection job status as the completion signal.
+- Active job timers are based on the job row `created_at` timestamp, so the elapsed time remains accurate after closing and reopening the browser tab.
 
 ---
 
 ## Model & Tools
 
-- **Segmentation + attribution:** Ollama (Qwen3 8B, Q4_K_M)
+- **Attribution + optional cast canonicalization:** Ollama (Qwen3 8B, Q4_K_M)
+- **Segmentation + deterministic cast harvest:** pure backend logic
 - **TTS synthesis:** VoxCPM
 - **Audio assembly:** FFmpeg
 - **Validation layer:** deterministic hard-coded checks in backend
@@ -193,6 +209,7 @@ Auralia intentionally uses deterministic backend logic for:
 - Offset continuity and overlap checks
 - Text reconstruction checks
 - Chunk merge/reconciliation
+- Downstream reset/invalidation when upstream stages are force re-run
 - Synthesis preflight blocking when review flags remain
 
 This reduces retries, token spend, and downstream synthesis failures.
@@ -209,11 +226,11 @@ Optimised for:
 Operational assumptions:
 
 - Run Qwen3 8B in Q4_K_M to keep VRAM usage manageable
-- Run segmentation and synthesis sequentially to avoid OOM
+- Run LLM attribution/canonicalization and synthesis sequentially to avoid OOM
 - Use CPU offloading where needed during synthesis
 
 ---
 
 ## Current Status
 
-Repository is currently a skeleton with project direction and pipeline contract defined in [`PLAN.md`](./PLAN.md).
+The core ingestion, deterministic segmentation, cast detection, and attribution pipeline is implemented. Upcoming work is focused on voice management, review gates, synthesis, and observability; see [`docs/plans/IMPLEMENTATION_PLAN.md`](./docs/plans/IMPLEMENTATION_PLAN.md).

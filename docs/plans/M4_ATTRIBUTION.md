@@ -6,7 +6,7 @@
 
 ## Implementation Status (last updated 2026-04-20)
 
-**Status:** 🟨 Nearly complete. Pipeline (Stages A–D), validators, API, and test coverage are all delivered and green. Outstanding work is evaluation-only: the hand-labeled benchmark fixture set and the live Qwen3 8B smoke run.
+**Status:** ⏸ Paused / accepted for now. Pipeline, validators, API, and test coverage are delivered, and local runtime results are satisfactory for current product work. Evaluation-only work is deferred: the hand-labeled benchmark fixture set, opt-in benchmark runner, and measured prompt/threshold tuning.
 
 **Delivered**
 - `apps/api/src/auralia_api/attribution/` — `__init__.py`, `prompts.py`, `roster.py`, `pre_pass.py`, `windower.py`, `parser.py`, `validators.py`, `service.py`, `storage.py`, `schemas.py`
@@ -79,6 +79,13 @@ Each stage's output is validated before the next stage runs.
 ---
 
 ## Stage A — Character Roster Extraction
+
+> Current implementation note: roster discovery has moved into the dedicated
+> M4.5 Cast Detection stage. Attribution now loads persisted
+> `document_cast_members` (falling back to legacy `documents.roster`) and
+> refuses to run when no cast/legacy roster exists. The original full-document
+> roster extraction described below is retained as historical design context and
+> for parser/prompt reference.
 
 **Purpose:** produce a bounded set of canonical speakers so stages B and C cannot hallucinate names. Serves as the candidate set for attribution.
 
@@ -353,7 +360,7 @@ Reuses `segmentation/ollama_client.py` (already kept for this purpose in M3).
 
 **Errors**
 - `404` — document not found.
-- `409` — document already attributed (call `DELETE /api/attribute/{document_id}` or force re-run to override).
+- `409` — document already attributed; call `POST /api/attribute?force=true` to delete existing attribution rows and re-run.
 - `422` — validator failure. Body contains the machine-readable report.
 - `502` — Ollama unavailable.
 
@@ -370,11 +377,16 @@ Reuses `segmentation/ollama_client.py` (already kept for this purpose in M3).
   model_name TEXT
   stats TEXT        -- JSON (see above)
   error_report TEXT -- JSON on failure
+  completed_at
   created_at / updated_at
   INDEX idx_attribution_jobs_document_status ON (document_id, status)
   ```
 
 Add a matching bootstrap mirror in `attribution/storage.py` (same pattern as `segmentation/storage.py`).
+
+Attribution is downstream of cast detection. Forced segmentation and
+cast-detection reruns delete stale attribution rows/jobs as part of the
+pipeline reset contract documented in `docs/plans/IMPLEMENTATION_PLAN.md`.
 
 ---
 
@@ -480,7 +492,7 @@ Fixed eval set: 20 chapter excerpts covering:
 7. **`service.py`** wiring A → B → C → D with a fake-LLM integration test (including the alternation fixture).
 8. **`/api/attribute` endpoint** + API tests.
 9. **Smoke test** against real Qwen3 8B on a full AO3 chapter; iterate on prompts if accuracy is weak.
-10. **Benchmark fixture set** (hand-labeling, ~3–4 hours) and the promotion-gate benchmark.
+10. **Deferred:** Benchmark fixture set (hand-labeling, ~3–4 hours) and the promotion-gate benchmark.
 
 ---
 
@@ -519,5 +531,6 @@ attribution_max_retries: int = Field(default=3, ge=0, le=10)
 - `attribution_jobs` row written per run with full stats.
 - Unit tests cover pre-pass, windower, parser, and validators.
 - Fake-LLM integration tests cover happy path, alternation, UNKNOWN, and retry.
-- Benchmark fixture set exists and the benchmark test runs (even if gated off by default).
+- Local runtime results have been reviewed and accepted as satisfactory for current product work.
+- Deferred quality work: benchmark fixture set exists and the benchmark test runs (even if gated off by default).
 - Plan document (this file) updated with any spec deviations made during implementation.
