@@ -44,6 +44,7 @@ export function DeleteConfirmationDialog({
         </DialogHeader>
         <DialogFooter>
           <Button
+            variant="confirm"
             disabled={isDeleting}
             onClick={async () => {
               setIsDeleting(true)
@@ -55,15 +56,14 @@ export function DeleteConfirmationDialog({
               }
             }}
             size="lg"
-            className="bg-orange-500 text-orange-950 disabled:opacity-50 hover:bg-orange-500/70 hover:text-orange-950"
           >
             {isDeleting ? 'Deleting' : confirmLabel}
           </Button>
           <DialogClose asChild>
             <Button
+              variant="cancel"
               disabled={isDeleting}
               size="lg"
-              className="text-orange-500 border-orange-500 hover:bg-orange-500 hover:text-orange-950"
             >
               Cancel
             </Button>

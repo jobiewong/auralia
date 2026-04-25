@@ -12,9 +12,77 @@ import {
   listDocumentSpans,
   listWorkDocuments,
 } from '~/db/documents'
+import { listVoices } from '~/db/voices'
 import { listWorks } from '~/db/works'
 
 import type { QueryClient } from '@tanstack/react-query'
+
+const VoiceSchema = z.object({
+  id: z.string(),
+  displayName: z.string(),
+  mode: z.enum(['designed', 'clone', 'hifi_clone']),
+  controlText: z.string().nullable(),
+  referenceAudioPath: z.string().nullable(),
+  promptAudioPath: z.string().nullable(),
+  promptText: z.string().nullable(),
+  cfgValue: z.number(),
+  inferenceTimesteps: z.number(),
+  isCanonical: z.boolean(),
+  previewAudioPath: z.string().nullable(),
+  previewSentence: z.string().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+})
+
+export type Voice = z.infer<typeof VoiceSchema>
+
+const voiceCollections = new WeakMap<
+  QueryClient,
+  ReturnType<typeof createVoicesCollection>
+>()
+
+function createVoicesCollection(queryClient: QueryClient) {
+  return createCollection(
+    queryCollectionOptions({
+      queryKey: ['voices'],
+      queryFn: () => listVoices(),
+      queryClient,
+      getKey: (voice) => voice.id,
+      schema: VoiceSchema,
+      staleTime: 5_000,
+    }),
+  )
+}
+
+export function getVoicesCollection(queryClient: QueryClient) {
+  let collection = voiceCollections.get(queryClient)
+  if (!collection) {
+    collection = createVoicesCollection(queryClient)
+    voiceCollections.set(queryClient, collection)
+  }
+  return collection
+}
+
+export function preloadVoices(queryClient: QueryClient) {
+  return listVoices().then((voices) => {
+    queryClient.setQueryData(['voices'], voices)
+    return getVoicesCollection(queryClient).preload()
+  })
+}
+
+export function useVoices() {
+  const queryClient = useQueryClient()
+  const voicesCollection = getVoicesCollection(queryClient)
+  const { data: voices } = useLiveQuery(
+    (q) =>
+      q
+        .from({ voice: voicesCollection })
+        .orderBy(({ voice }) => voice.displayName, 'asc')
+        .select(({ voice }) => ({ ...voice })),
+    [voicesCollection],
+  )
+  return voices
+}
 
 const BookSchema = z.object({
   id: z.string(),

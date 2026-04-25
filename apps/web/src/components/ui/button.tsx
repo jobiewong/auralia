@@ -12,6 +12,10 @@ const buttonVariants = cva(
       variant: {
         default:
           'border border-orange-950 text-orange-950 hover:bg-orange-950 hover:text-orange-500',
+        confirm:
+          'bg-orange-500 text-orange-950 hover:bg-orange-500/70 hover:text-orange-950',
+        cancel:
+          'border border-orange-500 text-orange-500 hover:bg-orange-500 hover:text-orange-950',
         link: 'text-orange-950 hover:underline h-fit p-0!',
         ghost: 'text-orange-950 hover:bg-orange-950/10',
       },

@@ -16,6 +16,8 @@ CREATE TABLE IF NOT EXISTS voices (
   cfg_value REAL NOT NULL DEFAULT 2.0,
   inference_timesteps INTEGER NOT NULL DEFAULT 10,
   is_canonical INTEGER NOT NULL DEFAULT 1,
+  preview_audio_path TEXT,
+  preview_sentence TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CHECK (mode IN ('designed', 'clone', 'hifi_clone'))
@@ -55,7 +57,16 @@ def connect(sqlite_path: str) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON;")
     conn.executescript(MIGRATION_SQL)
+    _add_columns_if_missing(conn)
     return conn
+
+
+def _add_columns_if_missing(conn: sqlite3.Connection) -> None:
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(voices)").fetchall()}
+    if "preview_audio_path" not in existing:
+        conn.execute("ALTER TABLE voices ADD COLUMN preview_audio_path TEXT")
+    if "preview_sentence" not in existing:
+        conn.execute("ALTER TABLE voices ADD COLUMN preview_sentence TEXT")
 
 
 def insert_voice(*, sqlite_path: str, voice: dict[str, Any]) -> dict[str, Any]:
@@ -65,9 +76,10 @@ def insert_voice(*, sqlite_path: str, voice: dict[str, Any]) -> dict[str, Any]:
             INSERT INTO voices (
               id, display_name, mode, control_text, reference_audio_path,
               prompt_audio_path, prompt_text, cfg_value, inference_timesteps,
-              is_canonical, created_at, updated_at
+              is_canonical, preview_audio_path, preview_sentence,
+              created_at, updated_at
             ) VALUES (
-              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
             )
             """,
             (
@@ -81,6 +93,8 @@ def insert_voice(*, sqlite_path: str, voice: dict[str, Any]) -> dict[str, Any]:
                 voice["cfg_value"],
                 voice["inference_timesteps"],
                 1 if voice.get("is_canonical", True) else 0,
+                voice.get("preview_audio_path"),
+                voice.get("preview_sentence"),
             ),
         )
         return get_voice(conn=conn, voice_id=voice["id"])
@@ -121,6 +135,8 @@ def update_voice(
         "cfg_value",
         "inference_timesteps",
         "is_canonical",
+        "preview_audio_path",
+        "preview_sentence",
     }
     updates = {k: v for k, v in fields.items() if k in allowed}
     assignments = ", ".join(f"{key} = ?" for key in updates)

@@ -85,6 +85,13 @@
       "when": 1777200000000,
       "tag": "0011_m5_voice_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1777300000000,
+      "tag": "0012_voices_preview_fields",
+      "breakpoints": true
     }
   ]
 }

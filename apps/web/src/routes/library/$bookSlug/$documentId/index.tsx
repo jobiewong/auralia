@@ -368,18 +368,18 @@ function PipelineRerunDialog({
         </DialogHeader>
         <DialogFooter>
           <Button
+            variant="confirm"
             disabled={isRunning}
             onClick={onConfirm}
             size="lg"
-            className="bg-orange-500 text-orange-950 disabled:opacity-50 hover:bg-orange-500/70 hover:text-orange-950"
           >
             {isRunning ? 'Running' : copy.confirmLabel}
           </Button>
           <DialogClose asChild>
             <Button
+              variant="cancel"
               disabled={isRunning}
               size="lg"
-              className="text-orange-500 border-orange-500 hover:bg-orange-500 hover:text-orange-950"
             >
               Cancel
             </Button>

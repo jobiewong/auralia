@@ -132,12 +132,12 @@ export function AddChapterDialog({
                   <Input
                     {...field}
                     id="add-chapter-url"
+                    variant="dialog"
                     disabled={isImporting}
                     inputMode="url"
                     placeholder="https://archiveofourown.org/works/123/chapters/456"
                     aria-invalid={fieldState.invalid}
                     autoComplete="off"
-                    className="h-auto border-orange-500/40 bg-orange-500/10 placeholder:text-orange-500/30 px-4 py-3 text-base focus-visible:bg-orange-900/20 focus-visible:ring-orange-950/20 sm:text-lg"
                   />
                   {fieldState.invalid ? (
                     <FieldError errors={[fieldState.error]} />
@@ -150,18 +150,18 @@ export function AddChapterDialog({
           <DialogFooter>
             <Button
               type="submit"
+              variant="confirm"
               size="lg"
               disabled={isImporting}
-              className="bg-orange-500 text-orange-950 disabled:opacity-50 hover:bg-orange-500/70 hover:text-orange-950"
             >
               {isImporting ? 'Importing' : 'Import Chapter'}
             </Button>
             <DialogClose asChild>
               <Button
                 type="button"
+                variant="cancel"
                 disabled={isImporting}
                 size="lg"
-                className="text-orange-500 border-orange-500 hover:bg-orange-500 hover:text-orange-950"
               >
                 Cancel
               </Button>

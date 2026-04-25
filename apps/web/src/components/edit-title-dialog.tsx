@@ -104,10 +104,10 @@ export function EditTitleDialog({
                   <Input
                     {...field}
                     id="edit-title-dialog-input"
+                    variant="dialog"
                     aria-invalid={fieldState.invalid}
                     autoComplete="off"
                     disabled={isSubmitting}
-                    className="h-auto border-orange-500/40 bg-orange-500/10 placeholder:text-orange-500/30 px-4 py-3 text-base focus-visible:bg-orange-900/20 focus-visible:ring-orange-950/20 sm:text-lg"
                   />
                   {fieldState.invalid ? (
                     <FieldError errors={[fieldState.error]} />
@@ -120,18 +120,20 @@ export function EditTitleDialog({
           <DialogFooter>
             <Button
               type="submit"
+              variant="confirm"
               size="lg"
               disabled={isSubmitting}
-              className="mt-8 bg-orange-500 text-orange-950 disabled:opacity-50 hover:bg-orange-500/70 hover:text-orange-950"
+              className="mt-8"
             >
               {isSubmitting ? 'Saving' : submitLabel}
             </Button>
             <DialogClose asChild>
               <Button
                 type="button"
+                variant="cancel"
                 disabled={isSubmitting}
                 size="lg"
-                className="mt-8 text-orange-500 border-orange-500 hover:bg-orange-500 hover:text-orange-950"
+                className="mt-8"
               >
                 Cancel
               </Button>

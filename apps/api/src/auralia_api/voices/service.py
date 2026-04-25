@@ -76,7 +76,13 @@ def create_voice(
                 sqlite_path=sqlite_path, voice_id=voice_id, force=False
             )
             raise VoiceValidationError(report)
-        return result
+        preview = _generate_preview(voice_id=voice_id, voice_root=voice_root)
+        storage.update_voice(
+            sqlite_path=sqlite_path,
+            voice_id=voice_id,
+            fields={"preview_audio_path": preview["audio_path"], "preview_sentence": preview["sentence"]},
+        )
+        return storage.get_voice_by_id(sqlite_path=sqlite_path, voice_id=voice_id)
     except Exception:
         if not storage_path_exists(sqlite_path=sqlite_path, voice_id=voice_id):
             shutil.rmtree(voice_dir, ignore_errors=True)
@@ -126,9 +132,19 @@ def update_voice(
             voice_root=voice_root,
             stem="prompt",
         )
-    return storage.update_voice(
+    result = storage.update_voice(
         sqlite_path=sqlite_path, voice_id=voice_id, fields=fields
     )
+    previews_dir = _voice_dir(voice_root, result["id"]) / "previews"
+    if previews_dir.exists():
+        shutil.rmtree(previews_dir)
+    preview = _generate_preview(voice_id=voice_id, voice_root=voice_root)
+    storage.update_voice(
+        sqlite_path=sqlite_path,
+        voice_id=voice_id,
+        fields={"preview_audio_path": preview["audio_path"], "preview_sentence": preview["sentence"]},
+    )
+    return storage.get_voice_by_id(sqlite_path=sqlite_path, voice_id=voice_id)
 
 
 def delete_voice(
@@ -223,17 +239,33 @@ def create_preview(*, sqlite_path: str, voice_root: str, voice_id: str) -> dict:
     report = validate_voice_profile(voice=voice, voice_root=voice_root)
     if report["errors"]:
         raise VoiceValidationError(report)
+    previews_dir = _voice_dir(voice_root, voice_id) / "previews"
+    if previews_dir.exists():
+        shutil.rmtree(previews_dir)
+    preview = _generate_preview(voice_id=voice_id, voice_root=voice_root)
+    storage.update_voice(
+        sqlite_path=sqlite_path,
+        voice_id=voice_id,
+        fields={"preview_audio_path": preview["audio_path"], "preview_sentence": preview["sentence"]},
+    )
+    output_name = Path(preview["audio_path"]).name
+    return {
+        "voice_id": voice_id,
+        "sentence": preview["sentence"],
+        "audio_path": preview["audio_path"],
+        "audio_url": f"/api/voices/{voice_id}/preview-file/{output_name}",
+    }
+
+
+def _generate_preview(*, voice_id: str, voice_root: str) -> dict:
     sentence = random.choice(PREVIEW_SENTENCES)
     previews_dir = _voice_dir(voice_root, voice_id) / "previews"
     previews_dir.mkdir(parents=True, exist_ok=True)
     output_path = previews_dir / f"preview_{uuid4().hex}.wav"
     _write_preview_wav(output_path)
-    rel_path = _relative_to_root(output_path, voice_root)
     return {
-        "voice_id": voice_id,
+        "audio_path": _relative_to_root(output_path, voice_root),
         "sentence": sentence,
-        "audio_path": rel_path,
-        "audio_url": f"/api/voices/{voice_id}/preview-file/{output_path.name}",
     }
 
 

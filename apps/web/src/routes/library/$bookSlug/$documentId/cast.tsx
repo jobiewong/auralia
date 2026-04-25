@@ -16,6 +16,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '~/components/ui/dialog'
+import { Input } from '~/components/ui/input'
 import { useDocumentDiagnostics, useDocumentSpans } from '~/db-collections'
 import {
   addCastCharacter,
@@ -270,7 +271,7 @@ function RouteComponent() {
                   <p className="text-foreground/50">{character.descriptor}</p>
                 )}
               </div>
-              <div className="flex flex-wrap items-baseline gap-3 text-foreground/50">
+              <div className="flex flex-col items-end gap-3 text-foreground/50">
                 <p>voice unmapped</p>
                 <div className="flex gap-2">
                   <CastFormDialog
@@ -397,54 +398,53 @@ function CastFormDialog({
         <form className="mt-8 grid gap-5 font-serif" onSubmit={handleSubmit}>
           <label className="grid gap-2">
             <span className="text-orange-500/60">Name</span>
-            <input
+            <Input
               value={form.canonicalName}
               onChange={(event) =>
                 setForm({ ...form, canonicalName: event.target.value })
               }
-              className="border-b border-orange-500 bg-transparent px-1 font-serif text-orange-500 focus-visible:outline-none"
+              variant="underline"
+              className="text-orange-500"
               required
             />
           </label>
 
           <label className="grid gap-2">
             <span className="text-orange-500/60">Aliases</span>
-            <input
+            <Input
               value={form.aliases}
               onChange={(event) =>
                 setForm({ ...form, aliases: event.target.value })
               }
-              className="border-b border-orange-500 bg-transparent px-1 font-serif text-orange-500 placeholder:text-orange-500/40 focus-visible:outline-none"
+              variant="underline"
+              className="text-orange-500 placeholder:text-orange-500/40"
               placeholder="comma separated"
             />
           </label>
 
           <label className="grid gap-2">
             <span className="text-orange-500/60">Descriptor</span>
-            <input
+            <Input
               value={form.descriptor}
               onChange={(event) =>
                 setForm({ ...form, descriptor: event.target.value })
               }
-              className="border-b border-orange-500 bg-transparent px-1 font-serif text-orange-500 focus-visible:outline-none"
+              variant="underline"
+              className="text-orange-500"
             />
           </label>
 
           <DialogFooter>
             <Button
               type="submit"
+              variant="confirm"
               disabled={isSaving}
               size="lg"
-              className="bg-orange-500 text-orange-950 disabled:opacity-50 hover:bg-orange-500/70 hover:text-orange-950"
             >
               {isSaving ? 'Saving' : mode === 'Edit' ? 'Save' : 'Add'}
             </Button>
             <DialogClose asChild>
-              <Button
-                disabled={isSaving}
-                size="lg"
-                className="text-orange-500 border-orange-500 hover:bg-orange-500 hover:text-orange-950"
-              >
+              <Button variant="cancel" disabled={isSaving} size="lg">
                 Cancel
               </Button>
             </DialogClose>

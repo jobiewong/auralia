@@ -12,6 +12,7 @@ dist/
 data/db/*.sqlite
 data/db/*.sqlite-*
 data/outputs/**
+data/voices/**
 
 # Env
 .env

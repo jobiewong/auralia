@@ -18,6 +18,8 @@ class VoiceProfile(BaseModel):
     cfg_value: float = 2.0
     inference_timesteps: int = 10
     is_canonical: bool = True
+    preview_audio_path: str | None = None
+    preview_sentence: str | None = None
     created_at: str
     updated_at: str
 

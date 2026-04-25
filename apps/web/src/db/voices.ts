@@ -49,6 +49,8 @@ export type VoiceProfile = {
   cfgValue: number
   inferenceTimesteps: number
   isCanonical: boolean
+  previewAudioPath: string | null
+  previewSentence: string | null
   createdAt: string
   updatedAt: string
 }
@@ -79,9 +81,10 @@ export const listVoices = createServerFn({ method: 'GET' }).handler(async () => 
 export const createVoice = createServerFn({ method: 'POST' })
   .inputValidator((data: FormData) => data)
   .handler(async ({ data }) => {
-    const [{ db }, { voices }] = await Promise.all([
+    const [{ db }, { voices }, { eq }] = await Promise.all([
       import('./index.ts'),
       import('./schema.ts'),
+      import('drizzle-orm'),
     ])
     const voice = await formDataToVoice(data)
     const voiceDir = voiceDirPath(voice.id)
@@ -103,7 +106,9 @@ export const createVoice = createServerFn({ method: 'POST' })
     }
 
     db.insert(voices).values(voice).run()
-    return voice
+    const preview = await generatePreview(voice.id)
+    db.update(voices).set(preview).where(eq(voices.id, voice.id)).run()
+    return { ...voice, ...preview }
   })
 
 export const updateVoice = createServerFn({ method: 'POST' })
@@ -140,7 +145,11 @@ export const updateVoice = createServerFn({ method: 'POST' })
       throw new Error(report.errors.map((error) => error.message).join('; '))
     }
     db.update(voices).set(next).where(eq(voices.id, voiceId)).run()
-    return next
+    const previewsDir = path.join(voiceDirPath(voiceId), 'previews')
+    await fs.rm(previewsDir, { recursive: true, force: true })
+    const preview = await generatePreview(voiceId)
+    db.update(voices).set(preview).where(eq(voices.id, voiceId)).run()
+    return { ...next, ...preview }
   })
 
 export const deleteVoice = createServerFn({ method: 'POST' })
@@ -159,13 +168,15 @@ export const deleteVoice = createServerFn({ method: 'POST' })
     if (mappingRows.length > 0 && !data.force) {
       throw new Error(`Voice is used by ${mappingRows.length} mapping(s)`)
     }
-    return db.transaction((tx) => {
+    const result = db.transaction((tx) => {
       if (data.force) {
         tx.delete(voiceMappings).where(eq(voiceMappings.voiceId, data.voiceId)).run()
       }
-      const result = tx.delete(voices).where(eq(voices.id, data.voiceId)).run()
-      return { deleted: result.changes, removedMappings: data.force ? mappingRows.length : 0 }
+      const r = tx.delete(voices).where(eq(voices.id, data.voiceId)).run()
+      return { deleted: r.changes, removedMappings: data.force ? mappingRows.length : 0 }
     })
+    await fs.rm(voiceDirPath(data.voiceId), { recursive: true, force: true })
+    return result
   })
 
 export const validateVoice = createServerFn({ method: 'POST' })
@@ -199,16 +210,15 @@ export const createVoicePreview = createServerFn({ method: 'POST' })
     if (!report.valid) {
       throw new Error(report.errors.map((error) => error.message).join('; '))
     }
-    const sentence = PreviewSentences[Math.floor(Math.random() * PreviewSentences.length)]
     const previewsDir = path.join(voiceDirPath(data.voiceId), 'previews')
-    await fs.mkdir(previewsDir, { recursive: true })
-    const fileName = `preview_${crypto.randomUUID().replaceAll('-', '')}.wav`
-    const absolutePath = path.join(previewsDir, fileName)
-    await fs.writeFile(absolutePath, makeSilentWav())
+    await fs.rm(previewsDir, { recursive: true, force: true })
+    const preview = await generatePreview(data.voiceId)
+    db.update(voices).set(preview).where(eq(voices.id, data.voiceId)).run()
+    const fileName = preview.previewAudioPath.split('/').at(-1)!
     return {
       voiceId: data.voiceId,
-      sentence,
-      audioPath: path.relative(repoRoot(), absolutePath),
+      sentence: preview.previewSentence,
+      audioPath: preview.previewAudioPath,
       audioUrl: `/api/voices/${data.voiceId}/preview-file/${fileName}`,
     }
   })
@@ -288,6 +298,19 @@ export const clearVoiceMapping = createServerFn({ method: 'POST' })
     return { deleted: result.changes }
   })
 
+async function generatePreview(voiceId: string): Promise<{ previewAudioPath: string; previewSentence: string }> {
+  const sentence = PreviewSentences[Math.floor(Math.random() * PreviewSentences.length)]
+  const previewsDir = path.join(voiceDirPath(voiceId), 'previews')
+  await fs.mkdir(previewsDir, { recursive: true })
+  const fileName = `preview_${crypto.randomUUID().replaceAll('-', '')}.wav`
+  const absolutePath = path.join(previewsDir, fileName)
+  await fs.writeFile(absolutePath, makeSilentWav())
+  return {
+    previewAudioPath: path.relative(voiceRoot(), absolutePath),
+    previewSentence: sentence,
+  }
+}
+
 async function formDataToVoice(data: FormData, existing?: VoiceProfile): Promise<VoiceProfile> {
   const now = new Date().toISOString()
   const mode = VoiceModeSchema.parse(String(data.get('mode') ?? existing?.mode ?? 'designed'))
@@ -302,6 +325,8 @@ async function formDataToVoice(data: FormData, existing?: VoiceProfile): Promise
     cfgValue: Number(data.get('cfgValue') ?? existing?.cfgValue ?? 2),
     inferenceTimesteps: Number(data.get('inferenceTimesteps') ?? existing?.inferenceTimesteps ?? 10),
     isCanonical: true,
+    previewAudioPath: existing?.previewAudioPath ?? null,
+    previewSentence: existing?.previewSentence ?? null,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   }

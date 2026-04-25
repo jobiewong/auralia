@@ -184,6 +184,8 @@ export const voices = sqliteTable(
     cfgValue: real("cfg_value").notNull().default(2.0),
     inferenceTimesteps: integer("inference_timesteps").notNull().default(10),
     isCanonical: integer("is_canonical", { mode: "boolean" }).notNull().default(true),
+    previewAudioPath: text("preview_audio_path"),
+    previewSentence: text("preview_sentence"),
     ...timestamps,
   },
   (table) => [
