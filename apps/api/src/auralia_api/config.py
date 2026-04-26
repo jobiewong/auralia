@@ -75,6 +75,26 @@ class Settings(BaseSettings):
         default="data/voices",
         description="Directory for imported voice assets and generated previews.",
     )
+    qwen_tts_python: str | None = Field(
+        default=None,
+        description="Python executable for the isolated local Qwen3-TTS environment.",
+    )
+    qwen_tts_voice_design_model: str = Field(
+        default="Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+        description="Qwen3-TTS VoiceDesign model id or local model directory.",
+    )
+    qwen_tts_device: str = Field(default="cuda:0")
+    qwen_tts_dtype: str = Field(default="bfloat16")
+    qwen_tts_default_language: str = Field(default="English")
+    qwen_tts_timeout_seconds: float = Field(
+        default=300.0,
+        gt=0,
+        description="Timeout for a single local Qwen3-TTS preview generation call.",
+    )
+    qwen_tts_numba_cache_dir: str = Field(
+        default="/tmp/auralia-numba-cache",
+        description="Writable cache directory for numba during Qwen/librosa import.",
+    )
 
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]

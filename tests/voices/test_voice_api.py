@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import sqlite3
+import sys
 import wave
 from pathlib import Path
 
@@ -44,6 +45,7 @@ def test_create_list_detail_and_update_designed_voice(monkeypatch, tmp_path):
     assert created.status_code == 201, created.text
     voice_id = created.json()["id"]
     assert created.json()["display_name"] == "Warm narrator"
+    assert created.json()["preview_audio_path"] is None
 
     listed = client.get("/api/voices")
     assert listed.status_code == 200
@@ -137,7 +139,79 @@ def test_delete_blocks_mapped_voice_and_force_removes_mapping(monkeypatch, tmp_p
     assert forced.json()["removed_mappings"] == 1
 
 
+def test_voice_mapping_endpoints(monkeypatch, tmp_path):
+    client = _client(monkeypatch, tmp_path)
+    created = client.post(
+        "/api/voices",
+        data={
+            "display_name": "Preview",
+            "mode": "designed",
+            "control_text": "steady",
+        },
+    )
+    assert created.status_code == 201, created.text
+    voice_id = created.json()["id"]
+    with sqlite3.connect(tmp_path / "auralia.sqlite") as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS documents (
+                id TEXT PRIMARY KEY,
+                source_id TEXT NOT NULL,
+                chapter_id TEXT NOT NULL,
+                text TEXT NOT NULL,
+                text_length INTEGER NOT NULL,
+                normalization TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO documents
+              (id, source_id, chapter_id, text, text_length, normalization)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            ("doc_1", "inline", "1", "text", 4, "{}"),
+        )
+
+    upserted = client.post(
+        "/api/documents/doc_1/voice-mappings",
+        json={"speaker": "NARRATOR", "voice_id": voice_id},
+    )
+    assert upserted.status_code == 200, upserted.text
+    assert upserted.json()["speaker"] == "NARRATOR"
+
+    listed = client.get("/api/documents/doc_1/voice-mappings")
+    assert listed.status_code == 200
+    assert listed.json()["mappings"][0]["voice_id"] == voice_id
+
+    cleared = client.delete("/api/documents/doc_1/voice-mappings/NARRATOR")
+    assert cleared.status_code == 200
+    assert cleared.json()["deleted"] == 1
+
+
 def test_preview_uses_preset_sentence_and_persists_wav(monkeypatch, tmp_path):
+    monkeypatch.setenv("AURALIA_QWEN_TTS_PYTHON", sys.executable)
+    monkeypatch.setenv("AURALIA_QWEN_TTS_TEST_FAKE", "1")
+    client = _client(monkeypatch, tmp_path)
+    created = client.post(
+        "/api/voices",
+        data={
+            "display_name": "Preview",
+            "mode": "designed",
+            "control_text": "steady",
+        },
+    )
+    voice_id = created.json()["id"]
+
+    response = client.post(f"/api/voices/{voice_id}/preview")
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["sentence"] in PREVIEW_SENTENCES
+    assert (tmp_path / "voices" / body["audio_path"]).exists()
+
+
+def test_preview_without_qwen_runtime_returns_502(monkeypatch, tmp_path):
+    monkeypatch.delenv("AURALIA_QWEN_TTS_PYTHON", raising=False)
     client = _client(monkeypatch, tmp_path)
     created = client.post(
         "/api/voices",
@@ -151,7 +225,20 @@ def test_preview_uses_preset_sentence_and_persists_wav(monkeypatch, tmp_path):
 
     response = client.post(f"/api/voices/{voice_id}/preview")
 
-    assert response.status_code == 200, response.text
-    body = response.json()
-    assert body["sentence"] in PREVIEW_SENTENCES
-    assert (tmp_path / "voices" / body["audio_path"]).exists()
+    assert response.status_code == 502
+
+
+def test_clone_preview_is_not_supported_yet(monkeypatch, tmp_path):
+    monkeypatch.setenv("AURALIA_QWEN_TTS_PYTHON", sys.executable)
+    monkeypatch.setenv("AURALIA_QWEN_TTS_TEST_FAKE", "1")
+    client = _client(monkeypatch, tmp_path)
+    created = client.post(
+        "/api/voices",
+        data={"display_name": "Clone", "mode": "clone"},
+        files={"reference_audio": ("sample.wav", _wav_bytes(), "audio/wav")},
+    )
+    voice_id = created.json()["id"]
+
+    response = client.post(f"/api/voices/{voice_id}/preview")
+
+    assert response.status_code == 502

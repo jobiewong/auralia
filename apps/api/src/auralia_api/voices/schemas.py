@@ -46,3 +46,22 @@ class VoicePreviewResponse(BaseModel):
     sentence: str
     audio_path: str
     audio_url: str
+
+
+class VoiceMapping(BaseModel):
+    id: str
+    document_id: str
+    speaker: str
+    voice_id: str
+    voice_name: str | None = None
+    created_at: str
+    updated_at: str
+
+
+class VoiceMappingListResponse(BaseModel):
+    mappings: list[VoiceMapping]
+
+
+class VoiceMappingUpsertRequest(BaseModel):
+    speaker: str
+    voice_id: str

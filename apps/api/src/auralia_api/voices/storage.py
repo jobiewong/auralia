@@ -3,6 +3,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 MIGRATION_SQL = """
 CREATE TABLE IF NOT EXISTS voices (
@@ -171,6 +172,95 @@ def delete_voice(*, sqlite_path: str, voice_id: str, force: bool) -> dict[str, A
             conn.execute("DELETE FROM voice_mappings WHERE voice_id = ?", (voice_id,))
         conn.execute("DELETE FROM voices WHERE id = ?", (voice_id,))
         return {"deleted": 1, "removed_mappings": int(mapping_count) if force else 0}
+
+
+def list_voice_mappings(*, sqlite_path: str, document_id: str) -> list[dict[str, Any]]:
+    with connect(sqlite_path) as conn:
+        rows = conn.execute(
+            """
+            SELECT
+              vm.id,
+              vm.document_id,
+              vm.speaker,
+              vm.voice_id,
+              v.display_name AS voice_name,
+              vm.created_at,
+              vm.updated_at
+            FROM voice_mappings vm
+            INNER JOIN voices v ON v.id = vm.voice_id
+            WHERE vm.document_id = ?
+            ORDER BY vm.speaker COLLATE NOCASE
+            """,
+            (document_id,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
+def upsert_voice_mapping(
+    *, sqlite_path: str, document_id: str, speaker: str, voice_id: str
+) -> dict[str, Any]:
+    cleaned_speaker = speaker.strip()
+    if not cleaned_speaker:
+        raise ValueError("speaker is required")
+    with connect(sqlite_path) as conn:
+        get_voice(conn=conn, voice_id=voice_id)
+        existing = conn.execute(
+            """
+            SELECT id FROM voice_mappings
+            WHERE document_id = ? AND speaker = ?
+            """,
+            (document_id, cleaned_speaker),
+        ).fetchone()
+        if existing:
+            conn.execute(
+                """
+                UPDATE voice_mappings
+                SET voice_id = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                (voice_id, existing["id"]),
+            )
+            mapping_id = existing["id"]
+        else:
+            mapping_id = f"voice_mapping_{uuid4().hex}"
+            conn.execute(
+                """
+                INSERT INTO voice_mappings (id, document_id, speaker, voice_id)
+                VALUES (?, ?, ?, ?)
+                """,
+                (mapping_id, document_id, cleaned_speaker, voice_id),
+            )
+        row = conn.execute(
+            """
+            SELECT
+              vm.id,
+              vm.document_id,
+              vm.speaker,
+              vm.voice_id,
+              v.display_name AS voice_name,
+              vm.created_at,
+              vm.updated_at
+            FROM voice_mappings vm
+            INNER JOIN voices v ON v.id = vm.voice_id
+            WHERE vm.id = ?
+            """,
+            (mapping_id,),
+        ).fetchone()
+        return dict(row)
+
+
+def clear_voice_mapping(
+    *, sqlite_path: str, document_id: str, speaker: str
+) -> dict[str, int]:
+    with connect(sqlite_path) as conn:
+        result = conn.execute(
+            """
+            DELETE FROM voice_mappings
+            WHERE document_id = ? AND speaker = ?
+            """,
+            (document_id, speaker),
+        )
+        return {"deleted": result.rowcount}
 
 
 def _row_to_voice(row: sqlite3.Row) -> dict[str, Any]:

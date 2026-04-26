@@ -2,11 +2,12 @@
 
 ## Summary
 
-Implement reusable local voice profiles with imported audio assets, validation, preview generation, and per-document voice assignments for narrator and cast members. Use the existing `voices` and `voice_mappings` tables as the base, add only the missing schema hardening needed for M5, expose the voice library at `/voices`, and keep frontend workflows on TanStack Start server functions.
+Implement reusable local Qwen3-TTS voice profiles with imported audio assets, validation, preview generation, and per-document voice assignments for narrator and cast members. Use the existing `voices` and `voice_mappings` tables as the base, add only the missing schema hardening needed for M5, expose the voice library at `/voices`, and keep frontend workflows on TanStack Start server functions.
 
 ## Key Changes
 
 - Add a backend voice module for profile CRUD, multipart asset import, validation, preview generation, and mapping persistence.
+- Add a local Qwen3-TTS provider boundary for preview generation first, then reuse it for M7 synthesis.
 - Store all uploaded audio under `data/voices/<voice_id>/...`; never rely on user-supplied local file paths after import.
 - Support three voice modes:
   - `designed`: requires `display_name`, `mode`, non-empty `control_text`.
@@ -19,6 +20,7 @@ Implement reusable local voice profiles with imported audio assets, validation, 
   - audio files exist, are non-empty, and use allowed audio extensions
   - use `ffprobe` when available for readable-audio metadata; report warning if unavailable
 - Generate short preview clips only after validation passes, using a random sentence selected from one preset preview sentence array shared by all voice types.
+- Generate previews with local Qwen3-TTS. Keep the silent/fake generator only as a test fallback.
 - Add a root-page link to the voice library route at `/voices`.
 - Add voice assignment controls to the chapter Cast route.
 
@@ -73,6 +75,12 @@ Implement reusable local voice profiles with imported audio assets, validation, 
   - Define one preset array of preview sentences in the backend voice module.
   - `POST /api/voices/{voice_id}/preview` randomly selects one sentence from that array for every mode.
   - The endpoint validates first, generates a short clip, saves it under `data/voices/<voice_id>/previews/`, and returns the selected sentence plus a playable path or API URL.
+  - Use the `qwen-tts` Python package through a local provider wrapper. The wrapper should accept text, output path, language, mode, and mode-specific voice inputs.
+  - Initial provider mapping:
+    - `designed`: use Qwen3-TTS VoiceDesign with `control_text` as the natural-language voice instruction.
+    - `clone`: use Qwen3-TTS Base voice clone with `reference_audio_path` as the reference clip.
+    - `hifi_clone`: use Qwen3-TTS Base voice clone with `prompt_audio_path` and `prompt_text`.
+  - Prefer the 0.6B models for first local previews; make 1.7B model IDs configurable.
 
 ## Test Plan
 
@@ -105,7 +113,7 @@ Implement reusable local voice profiles with imported audio assets, validation, 
 - Allowed upload extensions: `.wav`, `.mp3`, `.flac`, `.m4a`, `.ogg`.
 - Validation is readiness, not audio quality assessment.
 - Preview generation is included in M5, but full synthesis remains M7.
+- Qwen3-TTS model IDs, cache path, device, dtype, and default language should be configurable via environment variables.
 - React data mutations use TanStack Start server functions, matching existing app patterns.
 - Voice mappings remain document-scoped for M5.
 - Deleting a voice removes its imported assets after DB deletion succeeds; blocked deletes leave assets untouched.
-

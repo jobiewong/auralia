@@ -1,7 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQueryClient } from '@tanstack/react-query'
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { useServerFn } from '@tanstack/react-start'
 import { useMemo, useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { z } from 'zod/v4'
@@ -33,9 +32,9 @@ import {
 import { Input } from '~/components/ui/input'
 import { Select } from '~/components/ui/select'
 import { Textarea } from '~/components/ui/textarea'
-import { preloadVoices, useVoices } from '~/db-collections'
-import type { VoiceProfile } from '~/db/voices'
-import { createVoice, deleteVoice, updateVoice } from '~/db/voices'
+import type { Voice } from '~/db-collections'
+import { getVoicesCollection, preloadVoices, useVoices } from '~/db-collections'
+import { createVoicePreview } from '~/lib/voices-api'
 
 export const Route = createFileRoute('/voices')({
   ssr: false,
@@ -58,33 +57,55 @@ const voiceFormSchema = z.object({
 
 function VoicesRoute() {
   const queryClient = useQueryClient()
-  const createVoiceFn = useServerFn(createVoice)
-  const updateVoiceFn = useServerFn(updateVoice)
-  const deleteVoiceFn = useServerFn(deleteVoice)
+  const voicesCollection = getVoicesCollection(queryClient)
   const [error, setError] = useState<string | null>(null)
   const voices = useVoices() ?? []
 
   async function submitVoice(
     values: z.infer<typeof voiceFormSchema>,
-    voice?: VoiceProfile,
+    voice?: Voice,
   ) {
     setError(null)
-    const formData = new FormData()
-    formData.append('displayName', values.displayName)
-    formData.append('mode', values.mode)
-    formData.append('controlText', values.controlText ?? '')
-    formData.append('referenceAudio', values.referenceAudio ?? '')
-    formData.append('promptAudio', values.promptAudio ?? '')
-    formData.append('promptText', values.promptText ?? '')
-    formData.append('cfgValue', values.cfgValue.toString())
-    formData.append('inferenceTimesteps', values.inferenceTimesteps.toString())
-
     try {
       if (voice) {
-        formData.append('voiceId', voice.id)
-        await updateVoiceFn({ data: formData })
+        const tx = voicesCollection.update(
+          voice.id,
+          { metadata: values },
+          (draft) => {
+            draft.displayName = values.displayName
+            draft.mode = values.mode
+            draft.controlText = values.controlText?.trim() || null
+            draft.promptText = values.promptText?.trim() || null
+            draft.cfgValue = values.cfgValue
+            draft.inferenceTimesteps = values.inferenceTimesteps
+            draft.previewAudioPath = null
+            draft.previewSentence = null
+            draft.updatedAt = new Date().toISOString()
+          },
+        )
+        await tx.isPersisted.promise
       } else {
-        await createVoiceFn({ data: formData })
+        const now = new Date().toISOString()
+        const tx = voicesCollection.insert(
+          {
+            id: `voice_${crypto.randomUUID().replaceAll('-', '')}`,
+            displayName: values.displayName,
+            mode: values.mode,
+            controlText: values.controlText?.trim() || null,
+            referenceAudioPath: null,
+            promptAudioPath: null,
+            promptText: values.promptText?.trim() || null,
+            cfgValue: values.cfgValue,
+            inferenceTimesteps: values.inferenceTimesteps,
+            isCanonical: true,
+            previewAudioPath: null,
+            previewSentence: null,
+            createdAt: now,
+            updatedAt: now,
+          },
+          { metadata: values },
+        )
+        await tx.isPersisted.promise
       }
       await queryClient.invalidateQueries({ queryKey: ['voices'] })
     } catch (err) {
@@ -95,16 +116,22 @@ function VoicesRoute() {
 
   async function handleDelete(voiceId: string, force: boolean) {
     setError(null)
-    const prev = queryClient.getQueryData<VoiceProfile[]>(['voices'])
-    queryClient.setQueryData<VoiceProfile[]>(['voices'], (data) =>
-      (data ?? []).filter((v) => v.id !== voiceId),
-    )
     try {
-      await deleteVoiceFn({ data: { voiceId, force } })
+      const tx = voicesCollection.delete(voiceId, { metadata: { force } })
+      await tx.isPersisted.promise
       await queryClient.invalidateQueries({ queryKey: ['voices'] })
     } catch (err) {
-      queryClient.setQueryData(['voices'], prev)
       setError(err instanceof Error ? err.message : 'Delete failed')
+    }
+  }
+
+  async function handleGeneratePreview(voiceId: string) {
+    setError(null)
+    try {
+      await createVoicePreview(voiceId)
+      await queryClient.invalidateQueries({ queryKey: ['voices'] })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Preview failed')
     }
   }
 
@@ -138,6 +165,7 @@ function VoicesRoute() {
                 onEdit={(values) => submitVoice(values, voice)}
                 onDelete={() => handleDelete(voice.id, false)}
                 onForceDelete={() => handleDelete(voice.id, true)}
+                onGeneratePreview={() => handleGeneratePreview(voice.id)}
               />
             ))}
           </ul>
@@ -152,11 +180,13 @@ function VoiceItem({
   onEdit,
   onDelete,
   onForceDelete,
+  onGeneratePreview,
 }: {
-  voice: VoiceProfile
+  voice: Voice
   onEdit: (values: z.infer<typeof voiceFormSchema>) => void
   onDelete: () => void
   onForceDelete: () => void
+  onGeneratePreview: () => void
 }) {
   const [open, setOpen] = useState(false)
 
@@ -167,48 +197,54 @@ function VoiceItem({
 
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
-      <li>
-        <CollapsibleTrigger className="w-full text-left hover:bg-orange-950/10 py-1.5 px-2">
-          <li
-            key={voice.id}
-            className="group grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]"
-          >
-            <div>
-              <p className="flex items-center gap-2 leading-snug">
-                {voice.displayName}
-              </p>
-              <p className="text-foreground/50">
-                {voice.mode} / cfg {voice.cfgValue} / {voice.inferenceTimesteps}{' '}
-                steps
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {previewUrl && (
-                <BracketButton onClick={() => setOpen(true)}>
-                  Preview
-                </BracketButton>
-              )}
-              <VoiceDialog
-                label="Edit"
-                voice={voice}
-                onSubmit={(values) => onEdit(values)}
-              />
-              <DeleteVoiceDialog
-                voice={voice}
-                onDelete={onDelete}
-                onForceDelete={onForceDelete}
-              />
-            </div>
-          </li>
-        </CollapsibleTrigger>
-        <CollapsibleContent>
-          <section className="mb-6 border-y py-4 font-serif">
-            <p className="text-foreground/50">Preview sentence</p>
-            <p className="mb-3">{voice.previewSentence}</p>
-            <audio controls src={previewUrl ?? undefined} />
-          </section>
-        </CollapsibleContent>
-      </li>
+      <CollapsibleTrigger
+        className="w-full text-left hover:bg-orange-950/10 py-1.5 px-2"
+        asChild
+      >
+        <li
+          key={voice.id}
+          className="group grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]"
+        >
+          <div>
+            <p className="flex items-center gap-2 leading-snug">
+              {voice.displayName}
+            </p>
+            <p className="text-foreground/50">
+              {voice.mode} / cfg {voice.cfgValue} / {voice.inferenceTimesteps}{' '}
+              steps
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {previewUrl && (
+              <BracketButton onClick={() => setOpen(true)}>
+                Preview
+              </BracketButton>
+            )}
+            {!previewUrl && (
+              <BracketButton onClick={onGeneratePreview}>
+                Generate Preview
+              </BracketButton>
+            )}
+            <VoiceDialog
+              label="Edit"
+              voice={voice}
+              onSubmit={(values) => onEdit(values)}
+            />
+            <DeleteVoiceDialog
+              voice={voice}
+              onDelete={onDelete}
+              onForceDelete={onForceDelete}
+            />
+          </div>
+        </li>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <section className="mb-6 border-y py-4 font-serif">
+          <p className="text-foreground/50">Preview sentence</p>
+          <p className="mb-3">{voice.previewSentence}</p>
+          <audio controls src={previewUrl ?? undefined} />
+        </section>
+      </CollapsibleContent>
     </Collapsible>
   )
 }
@@ -219,7 +255,7 @@ function VoiceDialog({
   onSubmit,
 }: {
   label: string
-  voice?: VoiceProfile
+  voice?: Voice
   onSubmit: (values: z.infer<typeof voiceFormSchema>) => void
 }) {
   const [open, setOpen] = useState(false)
@@ -407,10 +443,6 @@ function VoiceDialog({
               type="submit"
               variant="confirm"
               size="lg"
-              onClick={(e) => {
-                e.stopPropagation()
-                form.handleSubmit(handleSubmit)()
-              }}
             >
               {voice ? 'Save Voice' : 'Create Voice'}
             </Button>
@@ -437,7 +469,7 @@ function DeleteVoiceDialog({
   onDelete,
   onForceDelete,
 }: {
-  voice: VoiceProfile
+  voice: Voice
   onDelete: () => void
   onForceDelete: () => void
 }) {

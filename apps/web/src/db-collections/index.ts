@@ -12,8 +12,17 @@ import {
   listDocumentSpans,
   listWorkDocuments,
 } from '~/db/documents'
-import { listVoices } from '~/db/voices'
 import { listWorks } from '~/db/works'
+import type { VoiceFormValues } from '~/lib/voices-api'
+import {
+  clearVoiceMapping,
+  createVoice,
+  deleteVoice,
+  fetchDocumentVoiceMappings,
+  fetchVoices,
+  updateVoice,
+  upsertVoiceMapping,
+} from '~/lib/voices-api'
 
 import type { QueryClient } from '@tanstack/react-query'
 
@@ -45,11 +54,44 @@ function createVoicesCollection(queryClient: QueryClient) {
   return createCollection(
     queryCollectionOptions({
       queryKey: ['voices'],
-      queryFn: () => listVoices(),
+      queryFn: () => fetchVoices(),
       queryClient,
       getKey: (voice) => voice.id,
       schema: VoiceSchema,
       staleTime: 5_000,
+      onInsert: async ({ transaction }) => {
+        await Promise.all(
+          transaction.mutations.map((mutation) =>
+            createVoice({
+              ...(mutation.metadata as VoiceFormValues),
+              voiceId: mutation.modified.id,
+            }),
+          ),
+        )
+      },
+      onUpdate: async ({ transaction }) => {
+        await Promise.all(
+          transaction.mutations.map((mutation) =>
+            updateVoice(
+              String(mutation.key),
+              mutation.metadata as VoiceFormValues,
+            ),
+          ),
+        )
+      },
+      onDelete: async ({ transaction }) => {
+        await Promise.all(
+          transaction.mutations.map((mutation) =>
+            deleteVoice(String(mutation.key), {
+              force:
+                typeof mutation.metadata === 'object' &&
+                mutation.metadata !== null &&
+                'force' in mutation.metadata &&
+                mutation.metadata.force === true,
+            }),
+          ),
+        )
+      },
     }),
   )
 }
@@ -64,7 +106,7 @@ export function getVoicesCollection(queryClient: QueryClient) {
 }
 
 export function preloadVoices(queryClient: QueryClient) {
-  return listVoices().then((voices) => {
+  return fetchVoices().then((voices) => {
     queryClient.setQueryData(['voices'], voices)
     return getVoicesCollection(queryClient).preload()
   })
@@ -82,6 +124,88 @@ export function useVoices() {
     [voicesCollection],
   )
   return voices
+}
+
+function documentVoiceMappingsKey(documentId: string) {
+  return ['document-voice-mappings', documentId] as const
+}
+
+function createDocumentVoiceMappingsCollection(
+  queryClient: QueryClient,
+  documentId: string,
+) {
+  return createCollection(
+    queryCollectionOptions({
+      queryKey: documentVoiceMappingsKey(documentId),
+      queryFn: () => fetchDocumentVoiceMappings(documentId),
+      queryClient,
+      getKey: (mapping) => mapping.speaker,
+      schema: VoiceMappingSchema,
+      staleTime: 5_000,
+      onInsert: async ({ transaction }) => {
+        await Promise.all(
+          transaction.mutations.map((mutation) =>
+            upsertVoiceMapping(documentId, {
+              speaker: mutation.modified.speaker,
+              voiceId: mutation.modified.voiceId,
+            }),
+          ),
+        )
+      },
+      onUpdate: async ({ transaction }) => {
+        await Promise.all(
+          transaction.mutations.map((mutation) =>
+            upsertVoiceMapping(documentId, {
+              speaker: String(mutation.key),
+              voiceId: mutation.modified.voiceId,
+            }),
+          ),
+        )
+      },
+      onDelete: async ({ transaction }) => {
+        await Promise.all(
+          transaction.mutations.map((mutation) =>
+            clearVoiceMapping(documentId, String(mutation.key)),
+          ),
+        )
+      },
+    }),
+  )
+}
+
+export function getDocumentVoiceMappingsCollection(
+  queryClient: QueryClient,
+  documentId: string,
+) {
+  let collections = documentVoiceMappingCollections.get(queryClient)
+  if (!collections) {
+    collections = new Map()
+    documentVoiceMappingCollections.set(queryClient, collections)
+  }
+
+  let collection = collections.get(documentId)
+  if (!collection) {
+    collection = createDocumentVoiceMappingsCollection(queryClient, documentId)
+    collections.set(documentId, collection)
+  }
+  return collection
+}
+
+export function useDocumentVoiceMappings(documentId: string) {
+  const queryClient = useQueryClient()
+  const mappingsCollection = getDocumentVoiceMappingsCollection(
+    queryClient,
+    documentId,
+  )
+  const { data: mappings } = useLiveQuery(
+    (q) =>
+      q
+        .from({ mapping: mappingsCollection })
+        .orderBy(({ mapping }) => mapping.speaker, 'asc')
+        .select(({ mapping }) => ({ ...mapping })),
+    [mappingsCollection],
+  )
+  return mappings
 }
 
 const BookSchema = z.object({
@@ -129,6 +253,18 @@ const DocumentSpanSchema = z.object({
 
 export type DocumentSpan = z.infer<typeof DocumentSpanSchema>
 
+const VoiceMappingSchema = z.object({
+  id: z.string(),
+  documentId: z.string(),
+  speaker: z.string(),
+  voiceId: z.string(),
+  voiceName: z.string().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+})
+
+export type VoiceMapping = z.infer<typeof VoiceMappingSchema>
+
 const MessageSchema = z.object({
   id: z.number(),
   text: z.string(),
@@ -147,6 +283,10 @@ export const messagesCollection = createCollection(
 const bookCollections = new WeakMap<
   QueryClient,
   ReturnType<typeof createBooksCollection>
+>()
+const documentVoiceMappingCollections = new WeakMap<
+  QueryClient,
+  Map<string, ReturnType<typeof createDocumentVoiceMappingsCollection>>
 >()
 const bookDocumentCollections = new WeakMap<
   QueryClient,

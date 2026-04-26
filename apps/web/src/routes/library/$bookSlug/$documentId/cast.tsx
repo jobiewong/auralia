@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import { useServerFn } from '@tanstack/react-start'
 import type { FormEvent } from 'react'
@@ -17,18 +17,18 @@ import {
   DialogTrigger,
 } from '~/components/ui/dialog'
 import { Input } from '~/components/ui/input'
-import { useDocumentDiagnostics, useDocumentSpans } from '~/db-collections'
+import {
+  getDocumentVoiceMappingsCollection,
+  useDocumentDiagnostics,
+  useDocumentSpans,
+  useDocumentVoiceMappings,
+  useVoices,
+} from '~/db-collections'
 import {
   addCastCharacter,
   deleteCastCharacter,
   updateCastCharacter,
 } from '~/db/documents'
-import {
-  clearVoiceMapping,
-  listDocumentVoiceMappings,
-  listVoices,
-  upsertVoiceMapping,
-} from '~/db/voices'
 import { formatCount, getSpeakerCounts, parseRoster } from '~/lib/utils'
 
 export const Route = createFileRoute('/library/$bookSlug/$documentId/cast')({
@@ -53,21 +53,17 @@ function RouteComponent() {
   const addCastCharacterFn = useServerFn(addCastCharacter)
   const updateCastCharacterFn = useServerFn(updateCastCharacter)
   const deleteCastCharacterFn = useServerFn(deleteCastCharacter)
-  const upsertVoiceMappingFn = useServerFn(upsertVoiceMapping)
-  const clearVoiceMappingFn = useServerFn(clearVoiceMapping)
+  const voiceMappingsCollection = getDocumentVoiceMappingsCollection(
+    queryClient,
+    documentId,
+  )
   const spans = useDocumentSpans(bookSlug, documentId)
   const diagnostics = useDocumentDiagnostics(bookSlug, documentId)
   const roster = parseRoster(diagnostics?.document.roster)
   const speakerCounts = getSpeakerCounts(spans)
   const legacySpeakers = getLegacySpeakers(roster, speakerCounts)
-  const { data: voices = [] } = useQuery({
-    queryKey: ['voices'],
-    queryFn: () => listVoices(),
-  })
-  const { data: voiceMappings = [] } = useQuery({
-    queryKey: ['document-voice-mappings', documentId],
-    queryFn: () => listDocumentVoiceMappings({ data: { documentId } }),
-  })
+  const voices = useVoices()
+  const voiceMappings = useDocumentVoiceMappings(documentId)
   const mappingBySpeaker = new Map(
     voiceMappings.map((mapping) => [mapping.speaker, mapping.voiceId]),
   )
@@ -89,11 +85,34 @@ function RouteComponent() {
   }
 
   async function assignVoice(speaker: string, voiceId: string) {
+    const existing = voiceMappings.find(
+      (mapping) => mapping.speaker === speaker,
+    )
+    let tx: { isPersisted: { promise: Promise<unknown> } }
     if (!voiceId) {
-      await clearVoiceMappingFn({ data: { documentId, speaker } })
+      if (!existing) {
+        return
+      }
+      tx = voiceMappingsCollection.delete(speaker)
+    } else if (existing) {
+      tx = voiceMappingsCollection.update(speaker, (draft) => {
+        draft.voiceId = voiceId
+        draft.updatedAt = new Date().toISOString()
+      })
     } else {
-      await upsertVoiceMappingFn({ data: { documentId, speaker, voiceId } })
+      const now = new Date().toISOString()
+      tx = voiceMappingsCollection.insert({
+        id: `voice_mapping_${crypto.randomUUID().replaceAll('-', '')}`,
+        documentId,
+        speaker,
+        voiceId,
+        voiceName:
+          voices.find((voice) => voice.id === voiceId)?.displayName ?? null,
+        createdAt: now,
+        updatedAt: now,
+      })
     }
+    await tx.isPersisted.promise
     await refreshCastData()
   }
 

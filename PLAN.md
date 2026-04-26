@@ -16,7 +16,7 @@ Building a local pipeline to turn prose (AO3/text files) into voice-cast audiobo
 
 - **Segmentation model:** Ollama running Qwen3 8B — used to split and tag text spans
 - **Attribution model:** Ollama running Qwen3 8B (separate pass) — used to assign speakers to dialogue spans
-- **TTS synthesis:** VoxCPM — handles voice-cast audio generation per character
+- **TTS synthesis:** Local Qwen3-TTS — handles preview generation and voice-cast audio generation per character
 - **Assembly:** FFmpeg — concatenates audio segments into final audiobook output
 - **Validation layer:** hard-coded deterministic validators in backend (offset/overlap/coverage/schema checks)
 
@@ -40,7 +40,7 @@ Unknown speakers must be returned as `UNKNOWN` and flagged for manual correction
 
 ### 4. Voice Mapping + Manual QA Gate
 
-A React UI lets you assign a VoxCPM voice to each detected character. Mappings and reusable voice profiles are stored in SQLite (with audio asset paths stored as filesystem references).
+A React UI lets you assign a local Qwen3-TTS voice profile to each detected character. Mappings and reusable voice profiles are stored in SQLite (with audio asset paths stored as filesystem references).
 
 Any span with `speaker: UNKNOWN` (or low confidence) must be reviewed and corrected in the UI before synthesis can begin.
 
@@ -240,9 +240,10 @@ For long chapters exceeding context limits:
 
 Optimising for a machine with **32 GB RAM** and an **RTX 3080 (10–12 GB VRAM)**:
 
-- Run Qwen3 8B at **Q4_K_M quantization** via Ollama (~5.2 GB model blob) to keep VRAM usage manageable and leave headroom for VoxCPM synthesis
-- Process segmentation and synthesis sequentially (not concurrently) to avoid OOM errors
-- Use CPU offloading for embedding layers if VRAM is tight during synthesis
+- Run Qwen3 8B at **Q4_K_M quantization** via Ollama (~5.2 GB model blob) for attribution.
+- Run Qwen3-TTS locally through the `qwen-tts` Python package or a local worker process. Start with the 0.6B CustomVoice/Base models for preview iteration on 10-12 GB VRAM, then evaluate 1.7B variants if latency and memory are acceptable.
+- Process attribution and synthesis sequentially (not concurrently) to avoid OOM errors.
+- Keep TTS model weights under a local model cache or configured path so the pipeline is offline after the initial model download.
 
 ---
 

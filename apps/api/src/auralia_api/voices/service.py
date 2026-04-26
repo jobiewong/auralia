@@ -2,14 +2,13 @@ from __future__ import annotations
 
 import random
 import shutil
-import subprocess
-import wave
 from pathlib import Path
 from uuid import uuid4
 
 from fastapi import UploadFile
 
 from auralia_api.voices import storage
+from auralia_api.voices.qwen_tts import generate_qwen_preview
 
 ALLOWED_AUDIO_EXTENSIONS = {".wav", ".mp3", ".flac", ".m4a", ".ogg"}
 PREVIEW_SENTENCES = [
@@ -32,6 +31,7 @@ def create_voice(
     *,
     sqlite_path: str,
     voice_root: str,
+    voice_id: str | None = None,
     display_name: str,
     mode: str,
     control_text: str | None,
@@ -41,7 +41,15 @@ def create_voice(
     reference_audio: UploadFile | None,
     prompt_audio: UploadFile | None,
 ) -> dict:
-    voice_id = f"voice_{uuid4().hex}"
+    voice_id = voice_id or f"voice_{uuid4().hex}"
+    if not voice_id.startswith("voice_"):
+        raise VoiceValidationError(
+            {
+                "errors": [
+                    _issue("invalid_voice_id", "voice_id", "invalid voice id")
+                ]
+            }
+        )
     voice_dir = _voice_dir(voice_root, voice_id)
     voice_dir.mkdir(parents=True, exist_ok=True)
     try:
@@ -76,12 +84,6 @@ def create_voice(
                 sqlite_path=sqlite_path, voice_id=voice_id, force=False
             )
             raise VoiceValidationError(report)
-        preview = _generate_preview(voice_id=voice_id, voice_root=voice_root)
-        storage.update_voice(
-            sqlite_path=sqlite_path,
-            voice_id=voice_id,
-            fields={"preview_audio_path": preview["audio_path"], "preview_sentence": preview["sentence"]},
-        )
         return storage.get_voice_by_id(sqlite_path=sqlite_path, voice_id=voice_id)
     except Exception:
         if not storage_path_exists(sqlite_path=sqlite_path, voice_id=voice_id):
@@ -132,17 +134,21 @@ def update_voice(
             voice_root=voice_root,
             stem="prompt",
         )
+    existing = storage.get_voice_by_id(sqlite_path=sqlite_path, voice_id=voice_id)
+    candidate = {**existing, **fields}
+    report = validate_voice_profile(voice=candidate, voice_root=voice_root)
+    if report["errors"]:
+        raise VoiceValidationError(report)
     result = storage.update_voice(
         sqlite_path=sqlite_path, voice_id=voice_id, fields=fields
     )
     previews_dir = _voice_dir(voice_root, result["id"]) / "previews"
     if previews_dir.exists():
         shutil.rmtree(previews_dir)
-    preview = _generate_preview(voice_id=voice_id, voice_root=voice_root)
     storage.update_voice(
         sqlite_path=sqlite_path,
         voice_id=voice_id,
-        fields={"preview_audio_path": preview["audio_path"], "preview_sentence": preview["sentence"]},
+        fields={"preview_audio_path": None, "preview_sentence": None},
     )
     return storage.get_voice_by_id(sqlite_path=sqlite_path, voice_id=voice_id)
 
@@ -242,11 +248,14 @@ def create_preview(*, sqlite_path: str, voice_root: str, voice_id: str) -> dict:
     previews_dir = _voice_dir(voice_root, voice_id) / "previews"
     if previews_dir.exists():
         shutil.rmtree(previews_dir)
-    preview = _generate_preview(voice_id=voice_id, voice_root=voice_root)
+    preview = _generate_preview(voice=voice, voice_root=voice_root)
     storage.update_voice(
         sqlite_path=sqlite_path,
         voice_id=voice_id,
-        fields={"preview_audio_path": preview["audio_path"], "preview_sentence": preview["sentence"]},
+        fields={
+            "preview_audio_path": preview["audio_path"],
+            "preview_sentence": preview["sentence"],
+        },
     )
     output_name = Path(preview["audio_path"]).name
     return {
@@ -257,12 +266,12 @@ def create_preview(*, sqlite_path: str, voice_root: str, voice_id: str) -> dict:
     }
 
 
-def _generate_preview(*, voice_id: str, voice_root: str) -> dict:
+def _generate_preview(*, voice: dict, voice_root: str) -> dict:
     sentence = random.choice(PREVIEW_SENTENCES)
-    previews_dir = _voice_dir(voice_root, voice_id) / "previews"
+    previews_dir = _voice_dir(voice_root, voice["id"]) / "previews"
     previews_dir.mkdir(parents=True, exist_ok=True)
     output_path = previews_dir / f"preview_{uuid4().hex}.wav"
-    _write_preview_wav(output_path)
+    generate_qwen_preview(voice=voice, text=sentence, output_path=output_path)
     return {
         "audio_path": _relative_to_root(output_path, voice_root),
         "sentence": sentence,
@@ -359,6 +368,8 @@ def _validate_asset(
         )
         return
     try:
+        import subprocess
+
         subprocess.run(
             ["ffprobe", "-v", "error", "-show_format", "-show_streams", str(path)],
             check=True,
@@ -374,18 +385,6 @@ def _validate_asset(
                 "audio file could not be read by ffprobe",
             )
         )
-
-
-def _write_preview_wav(path: Path) -> None:
-    sample_rate = 16_000
-    duration_seconds = 1
-    frames = b"\x00\x00" * sample_rate * duration_seconds
-    with wave.open(str(path), "wb") as wav:
-        wav.setnchannels(1)
-        wav.setsampwidth(2)
-        wav.setframerate(sample_rate)
-        wav.writeframes(frames)
-
 
 def _voice_dir(voice_root: str, voice_id: str) -> Path:
     path = Path(voice_root) / voice_id

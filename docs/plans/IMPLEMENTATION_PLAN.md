@@ -15,7 +15,7 @@ Build a fully local, character-aware audiobook pipeline that converts prose into
 - **Database:** SQLite (local, single-user) for structured state
 - **Schema control:** Drizzle ORM + migrations (TypeScript-first schema ownership)
 - **LLM Runtime:** Ollama + Qwen3 8B (attribution only — segmentation is deterministic)
-- **TTS:** VoxCPM
+- **TTS:** Local Qwen3-TTS
 - **Assembly:** FFmpeg
 - **Binary assets:** local filesystem for audio files
 
@@ -313,6 +313,7 @@ Build a fully local, character-aware audiobook pipeline that converts prose into
 **Definition of Done**
 - Voices can be created once and reused across chapters/books via `voice_id`.
 - Voice validation endpoint blocks invalid clone/hifi configs.
+- Preview generation uses local Qwen3-TTS and persists playable clips under `data/voices/<voice_id>/previews/`.
 
 ---
 
@@ -343,7 +344,7 @@ Build a fully local, character-aware audiobook pipeline that converts prose into
 **Tasks**
 - [ ] Implement synthesis job planner from `synthesis_manifest`
 - [ ] Map narration/dialogue to correct voices
-- [ ] Generate per-span audio with stable file naming
+- [ ] Generate per-span audio with stable file naming through local Qwen3-TTS
 - [ ] Implement idempotent caching (hash-based)
 - [ ] Concatenate audio in span order via FFmpeg
 - [ ] Support single-file and chapter-split export
@@ -396,6 +397,7 @@ Reasoning:
 - M0 and M1 establish repo layout, schema, and validators before ingestion and LLM stages (avoids costly refactors later).
 - M4.5 converts segmented spans into an editable cast; M4 attribution consumes that cast.
 - M5 establishes reusable voices and APIs before review/synthesis.
+- M5 also establishes the local Qwen3-TTS preview path so M7 can reuse the same synthesis provider.
 - M6 is a hard gate for unknown speakers before M7 synthesis.
 
 ---
