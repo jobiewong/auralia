@@ -12,8 +12,7 @@ export type Voice = {
   referenceAudioPath: string | null
   promptAudioPath: string | null
   promptText: string | null
-  cfgValue: number
-  inferenceTimesteps: number
+  temperature: number
   isCanonical: boolean
   previewAudioPath: string | null
   previewSentence: string | null
@@ -39,8 +38,7 @@ export type VoiceFormValues = {
   referenceAudio?: File
   promptAudio?: File
   promptText?: string
-  cfgValue: number
-  inferenceTimesteps: number
+  temperature: number
 }
 
 type ApiVoice = {
@@ -51,8 +49,7 @@ type ApiVoice = {
   reference_audio_path: string | null
   prompt_audio_path: string | null
   prompt_text: string | null
-  cfg_value: number
-  inference_timesteps: number
+  temperature: number
   is_canonical: boolean
   preview_audio_path: string | null
   preview_sentence: string | null
@@ -136,8 +133,7 @@ function voiceFormData(values: VoiceFormValues) {
   data.append('mode', values.mode)
   data.append('control_text', values.controlText ?? '')
   data.append('prompt_text', values.promptText ?? '')
-  data.append('cfg_value', values.cfgValue.toString())
-  data.append('inference_timesteps', values.inferenceTimesteps.toString())
+  data.append('temperature', values.temperature.toString())
   if (values.referenceAudio && values.referenceAudio.size > 0) {
     data.append('reference_audio', values.referenceAudio)
   }
@@ -156,8 +152,7 @@ function fromApiVoice(voice: ApiVoice): Voice {
     referenceAudioPath: voice.reference_audio_path,
     promptAudioPath: voice.prompt_audio_path,
     promptText: voice.prompt_text,
-    cfgValue: voice.cfg_value,
-    inferenceTimesteps: voice.inference_timesteps,
+    temperature: voice.temperature,
     isCanonical: voice.is_canonical,
     previewAudioPath: voice.preview_audio_path,
     previewSentence: voice.preview_sentence,

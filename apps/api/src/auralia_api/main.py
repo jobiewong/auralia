@@ -115,8 +115,7 @@ async def create_voice_endpoint(request: Request) -> VoiceProfile:
             mode=str(form.get("mode") or ""),
             control_text=_optional_text(form.get("control_text")),
             prompt_text=_optional_text(form.get("prompt_text")),
-            cfg_value=_optional_float(form.get("cfg_value")) or 2.0,
-            inference_timesteps=_optional_int(form.get("inference_timesteps")) or 10,
+            temperature=_optional_float(form.get("temperature")) or 0.9,
             reference_audio=_form_file(form.get("reference_audio")),
             prompt_audio=_form_file(form.get("prompt_audio")),
         )
@@ -157,8 +156,7 @@ async def update_voice_endpoint(voice_id: str, request: Request) -> VoiceProfile
             mode=_optional_text(form.get("mode")),
             control_text=_optional_text(form.get("control_text")),
             prompt_text=_optional_text(form.get("prompt_text")),
-            cfg_value=_optional_float(form.get("cfg_value")),
-            inference_timesteps=_optional_int(form.get("inference_timesteps")),
+            temperature=_optional_float(form.get("temperature")),
             reference_audio=_form_file(form.get("reference_audio")),
             prompt_audio=_form_file(form.get("prompt_audio")),
         )

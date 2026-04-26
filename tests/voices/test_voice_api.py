@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from auralia_api.config import get_settings
 from auralia_api.main import app
+from auralia_api.voices.qwen_tts import generate_qwen_preview
 from auralia_api.voices.service import PREVIEW_SENTENCES
 
 
@@ -39,12 +40,14 @@ def test_create_list_detail_and_update_designed_voice(monkeypatch, tmp_path):
             "display_name": "Warm narrator",
             "mode": "designed",
             "control_text": "warm, clear, composed",
+            "temperature": "1.15",
         },
     )
 
     assert created.status_code == 201, created.text
     voice_id = created.json()["id"]
     assert created.json()["display_name"] == "Warm narrator"
+    assert created.json()["temperature"] == 1.15
     assert created.json()["preview_audio_path"] is None
 
     listed = client.get("/api/voices")
@@ -60,10 +63,42 @@ def test_create_list_detail_and_update_designed_voice(monkeypatch, tmp_path):
         data={
             "display_name": "Cool narrator",
             "control_text": "cool, precise",
+            "temperature": "0.75",
         },
     )
     assert updated.status_code == 200, updated.text
     assert updated.json()["display_name"] == "Cool narrator"
+    assert updated.json()["temperature"] == 0.75
+
+
+def test_qwen_preview_payload_includes_temperature(monkeypatch, tmp_path):
+    monkeypatch.setenv("AURALIA_QWEN_TTS_PYTHON", sys.executable)
+    get_settings.cache_clear()
+    captured = {}
+    output_path = tmp_path / "preview.wav"
+
+    def fake_run_qwen_subprocess(*, command, payload, timeout_seconds, env):
+        captured["payload"] = payload
+        output_path.write_bytes(_wav_bytes())
+        return {"returncode": 0, "stdout": '{"ok": true}', "stderr": ""}
+
+    monkeypatch.setattr(
+        "auralia_api.voices.qwen_tts._run_qwen_subprocess",
+        fake_run_qwen_subprocess,
+    )
+
+    generate_qwen_preview(
+        voice={
+            "id": "voice_temp",
+            "mode": "designed",
+            "control_text": "bright",
+            "temperature": 1.35,
+        },
+        text="Preview text.",
+        output_path=output_path,
+    )
+
+    assert captured["payload"]["temperature"] == 1.35
 
 
 def test_upload_imports_clone_audio_under_voice_storage(monkeypatch, tmp_path):

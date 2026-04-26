@@ -51,8 +51,7 @@ const voiceFormSchema = z.object({
   referenceAudio: z.instanceof(File).optional(),
   promptAudio: z.instanceof(File).optional(),
   promptText: z.string().optional(),
-  cfgValue: z.number().min(0.1).max(10).step(0.1),
-  inferenceTimesteps: z.number().min(1).max(100),
+  temperature: z.number().min(0.1).max(2.0).step(0.05),
 })
 
 function VoicesRoute() {
@@ -76,8 +75,7 @@ function VoicesRoute() {
             draft.mode = values.mode
             draft.controlText = values.controlText?.trim() || null
             draft.promptText = values.promptText?.trim() || null
-            draft.cfgValue = values.cfgValue
-            draft.inferenceTimesteps = values.inferenceTimesteps
+            draft.temperature = values.temperature
             draft.previewAudioPath = null
             draft.previewSentence = null
             draft.updatedAt = new Date().toISOString()
@@ -95,8 +93,7 @@ function VoicesRoute() {
             referenceAudioPath: null,
             promptAudioPath: null,
             promptText: values.promptText?.trim() || null,
-            cfgValue: values.cfgValue,
-            inferenceTimesteps: values.inferenceTimesteps,
+            temperature: values.temperature,
             isCanonical: true,
             previewAudioPath: null,
             previewSentence: null,
@@ -210,8 +207,7 @@ function VoiceItem({
               {voice.displayName}
             </p>
             <p className="text-foreground/50">
-              {voice.mode} / cfg {voice.cfgValue} / {voice.inferenceTimesteps}{' '}
-              steps
+              {voice.mode} / temperature {voice.temperature.toFixed(2)}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -274,8 +270,7 @@ function VoiceDialog({
         ? new File([], voice.promptAudioPath)
         : undefined,
       promptText: voice?.promptText ?? '',
-      cfgValue: voice?.cfgValue ?? 2,
-      inferenceTimesteps: voice?.inferenceTimesteps ?? 10,
+      temperature: voice?.temperature ?? 0.9,
     },
   })
 
@@ -351,24 +346,57 @@ function VoiceDialog({
               )}
             />
             {mode === 'designed' && (
-              <Controller
-                name="controlText"
-                control={form.control}
-                render={({ field, fieldState }) => (
-                  <Field>
-                    <FieldLabel id="control-text">Control text</FieldLabel>
-                    <Textarea
-                      {...field}
-                      id="control-text"
-                      aria-invalid={fieldState.invalid}
-                      className="min-h-24"
-                    />
-                    {fieldState.invalid ? (
-                      <FieldError errors={[fieldState.error]} />
-                    ) : null}
-                  </Field>
-                )}
-              />
+              <>
+                <Controller
+                  name="controlText"
+                  control={form.control}
+                  render={({ field, fieldState }) => (
+                    <Field>
+                      <FieldLabel id="control-text">Control text</FieldLabel>
+                      <Textarea
+                        {...field}
+                        id="control-text"
+                        aria-invalid={fieldState.invalid}
+                        className="min-h-24"
+                      />
+                      {fieldState.invalid ? (
+                        <FieldError errors={[fieldState.error]} />
+                      ) : null}
+                    </Field>
+                  )}
+                />
+                <Controller
+                  name="temperature"
+                  control={form.control}
+                  render={({ field, fieldState }) => (
+                    <Field>
+                      <div className="flex items-center justify-between gap-4">
+                        <FieldLabel htmlFor="temperature">
+                          Temperature
+                        </FieldLabel>
+                        <span className="font-mono text-sm text-foreground/60">
+                          {field.value.toFixed(2)}
+                        </span>
+                      </div>
+                      <Input
+                        id="temperature"
+                        type="range"
+                        min="0.1"
+                        max="2"
+                        step="0.05"
+                        value={field.value}
+                        onChange={(event) =>
+                          field.onChange(event.currentTarget.valueAsNumber)
+                        }
+                        aria-invalid={fieldState.invalid}
+                      />
+                      {fieldState.invalid ? (
+                        <FieldError errors={[fieldState.error]} />
+                      ) : null}
+                    </Field>
+                  )}
+                />
+              </>
             )}
             {mode === 'clone' && (
               <Controller
@@ -412,31 +440,6 @@ function VoiceDialog({
                 )}
               />
             )}
-            {/* <div className="grid gap-4 sm:grid-cols-2">
-            <label className="grid gap-2">
-              <span>CFG</span>
-              <Input
-                name="cfgValue"
-                type="number"
-                min="0.1"
-                max="10"
-                step="0.1"
-                defaultValue={voice?.cfgValue ?? 2}
-                variant="underline"
-              />
-            </label>
-            <label className="grid gap-2">
-              <span>Inference steps</span>
-              <Input
-                name="inferenceTimesteps"
-                type="number"
-                min="1"
-                max="100"
-                defaultValue={voice?.inferenceTimesteps ?? 10}
-                variant="underline"
-              />
-            </label>
-          </div>*/}
           </FieldGroup>
           <DialogFooter>
             <Button

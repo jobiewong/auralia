@@ -36,8 +36,7 @@ def create_voice(
     mode: str,
     control_text: str | None,
     prompt_text: str | None,
-    cfg_value: float,
-    inference_timesteps: int,
+    temperature: float,
     reference_audio: UploadFile | None,
     prompt_audio: UploadFile | None,
 ) -> dict:
@@ -59,8 +58,7 @@ def create_voice(
             "mode": mode,
             "control_text": _clean_optional(control_text),
             "prompt_text": _clean_optional(prompt_text),
-            "cfg_value": cfg_value,
-            "inference_timesteps": inference_timesteps,
+            "temperature": temperature,
             "is_canonical": True,
         }
         if reference_audio is not None:
@@ -100,8 +98,7 @@ def update_voice(
     mode: str | None = None,
     control_text: str | None = None,
     prompt_text: str | None = None,
-    cfg_value: float | None = None,
-    inference_timesteps: int | None = None,
+    temperature: float | None = None,
     reference_audio: UploadFile | None = None,
     prompt_audio: UploadFile | None = None,
 ) -> dict:
@@ -114,10 +111,8 @@ def update_voice(
         fields["control_text"] = _clean_optional(control_text)
     if prompt_text is not None:
         fields["prompt_text"] = _clean_optional(prompt_text)
-    if cfg_value is not None:
-        fields["cfg_value"] = cfg_value
-    if inference_timesteps is not None:
-        fields["inference_timesteps"] = inference_timesteps
+    if temperature is not None:
+        fields["temperature"] = temperature
     voice_dir = _voice_dir(voice_root, voice_id)
     voice_dir.mkdir(parents=True, exist_ok=True)
     if reference_audio is not None:
@@ -184,20 +179,12 @@ def validate_voice_profile(*, voice: dict, voice_root: str) -> dict:
                 "mode must be designed, clone, or hifi_clone",
             )
         )
-    if not 0.1 <= float(voice["cfg_value"]) <= 10:
+    if not 0.1 <= float(voice["temperature"]) <= 2.0:
         errors.append(
             _issue(
-                "invalid_cfg_value",
-                "cfg_value",
-                "cfg_value must be between 0.1 and 10",
-            )
-        )
-    if not 1 <= int(voice["inference_timesteps"]) <= 100:
-        errors.append(
-            _issue(
-                "invalid_inference_timesteps",
-                "inference_timesteps",
-                "inference_timesteps must be between 1 and 100",
+                "invalid_temperature",
+                "temperature",
+                "temperature must be between 0.1 and 2.0",
             )
         )
     if mode == "designed" and not _clean_optional(voice.get("control_text")):

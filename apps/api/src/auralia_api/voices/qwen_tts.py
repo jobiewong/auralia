@@ -45,6 +45,7 @@ def generate_qwen_preview(
         "device": settings.qwen_tts_device,
         "dtype": settings.qwen_tts_dtype,
         "instruct": voice.get("control_text") or "",
+        "temperature": voice.get("temperature", 0.9),
     }
     env = os.environ.copy()
     src_path = str(Path(__file__).resolve().parents[2])

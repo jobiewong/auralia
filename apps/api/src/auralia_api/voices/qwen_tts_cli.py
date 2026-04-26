@@ -55,11 +55,14 @@ def main() -> int:
     except Exception:
         _status("flash_attention_2 load failed; retrying without it")
         model = Qwen3TTSModel.from_pretrained(payload["model"], **model_kwargs)
-    _status("generating voice design preview")
+    temperature = float(payload.get("temperature") or 0.9)
+    _status(f"generating voice design preview temperature={temperature}")
     wavs, sr = model.generate_voice_design(
         text=payload["text"],
         language=payload.get("language") or "English",
         instruct=payload.get("instruct") or "",
+        temperature=temperature,
+        subtalker_temperature=temperature,
     )
     sf.write(str(output_path), wavs[0], sr)
     _status(f"wrote {output_path}")
