@@ -326,9 +326,13 @@ function VoiceItem({
         </li>
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <section className="mb-6 border-y py-4 font-serif">
-          <p className="text-foreground/50">Preview sentence</p>
-          <p className="mb-3">{voice.previewSentence}</p>
+        <section className="mb-6 border-b pb-2 font-serif px-2">
+          <p className="mb-2">
+            ↪Preview{' '}
+            <span className="ml-2 text-foreground/50">
+              -- {voice.previewSentence}
+            </span>{' '}
+          </p>
           <audio controls src={previewUrl ?? undefined} />
         </section>
       </CollapsibleContent>

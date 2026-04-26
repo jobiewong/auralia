@@ -47,7 +47,7 @@ export function AudioUpload({
       </FileUploadDropzone>
       <FileUploadList>
         {files.map((file, index) => (
-          <FileUploadItem key={index} value={file}>
+          <FileUploadItem key={index} value={file} className="p-0">
             <FileUploadItemMetadata />
             <FileUploadItemDelete asChild>
               <BracketButton className="hover:text-orange-500/70">
