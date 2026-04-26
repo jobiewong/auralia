@@ -134,17 +134,19 @@ def update_voice(
     report = validate_voice_profile(voice=candidate, voice_root=voice_root)
     if report["errors"]:
         raise VoiceValidationError(report)
+    preview_inputs_changed = _preview_inputs_changed(existing=existing, fields=fields)
     result = storage.update_voice(
         sqlite_path=sqlite_path, voice_id=voice_id, fields=fields
     )
-    previews_dir = _voice_dir(voice_root, result["id"]) / "previews"
-    if previews_dir.exists():
-        shutil.rmtree(previews_dir)
-    storage.update_voice(
-        sqlite_path=sqlite_path,
-        voice_id=voice_id,
-        fields={"preview_audio_path": None, "preview_sentence": None},
-    )
+    if preview_inputs_changed:
+        previews_dir = _voice_dir(voice_root, result["id"]) / "previews"
+        if previews_dir.exists():
+            shutil.rmtree(previews_dir)
+        storage.update_voice(
+            sqlite_path=sqlite_path,
+            voice_id=voice_id,
+            fields={"preview_audio_path": None, "preview_sentence": None},
+        )
     return storage.get_voice_by_id(sqlite_path=sqlite_path, voice_id=voice_id)
 
 
@@ -225,6 +227,21 @@ def validate_voice_profile(*, voice: dict, voice_root: str) -> dict:
         "errors": errors,
         "warnings": warnings,
     }
+
+
+def _preview_inputs_changed(*, existing: dict, fields: dict) -> bool:
+    preview_fields = {
+        "mode",
+        "control_text",
+        "prompt_text",
+        "temperature",
+        "reference_audio_path",
+        "prompt_audio_path",
+    }
+    return any(
+        field in fields and fields[field] != existing.get(field)
+        for field in preview_fields
+    )
 
 
 def create_preview(*, sqlite_path: str, voice_root: str, voice_id: str) -> dict:

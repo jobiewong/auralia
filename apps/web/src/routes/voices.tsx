@@ -1,11 +1,12 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQueryClient } from '@tanstack/react-query'
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { z } from 'zod/v4'
 import { AudioUpload } from '~/components/audio-upload'
 import { BracketButton } from '~/components/bracket-button'
+import { LoadingEllipsis } from '~/components/loading-ellipsis'
 import { Button } from '~/components/ui/button'
 import { Checkbox } from '~/components/ui/checkbox'
 import {
@@ -45,6 +46,8 @@ export const Route = createFileRoute('/voices')({
 
 const VoiceModeSchema = z.enum(['designed', 'clone', 'hifi_clone'])
 
+type PreviewStatus = 'generating' | 'ready' | 'failed'
+
 const voiceFormSchema = z.object({
   displayName: z.string().min(1),
   mode: VoiceModeSchema,
@@ -55,11 +58,75 @@ const voiceFormSchema = z.object({
   temperature: z.number().min(0.1).max(2.0).step(0.05),
 })
 
+function cleanOptional(value?: string | null) {
+  return value?.trim() || null
+}
+
+function hasNewUpload(value?: File) {
+  return Boolean(value && value.size > 0)
+}
+
+function previewInputsChanged(
+  voice: Voice,
+  values: z.infer<typeof voiceFormSchema>,
+) {
+  return (
+    values.mode !== voice.mode ||
+    cleanOptional(values.controlText) !== voice.controlText ||
+    cleanOptional(values.promptText) !== voice.promptText ||
+    values.temperature !== voice.temperature ||
+    hasNewUpload(values.referenceAudio) ||
+    hasNewUpload(values.promptAudio)
+  )
+}
+
 function VoicesRoute() {
   const queryClient = useQueryClient()
   const voicesCollection = getVoicesCollection(queryClient)
   const [error, setError] = useState<string | null>(null)
+  const [previewStatuses, setPreviewStatuses] = useState<
+    Record<string, PreviewStatus>
+  >({})
+  const previewGenerationQueue = useRef<Record<string, Promise<void>>>({})
   const voices = useVoices()
+
+  function generatePreviewInBackground(voiceId: string) {
+    setPreviewStatuses((current) => ({
+      ...current,
+      [voiceId]: 'generating',
+    }))
+
+    const previous =
+      previewGenerationQueue.current[voiceId] ?? Promise.resolve()
+    const next = previous
+      .catch(() => undefined)
+      .then(async () => {
+        setPreviewStatuses((current) => ({
+          ...current,
+          [voiceId]: 'generating',
+        }))
+        await createVoicePreview(voiceId)
+        await queryClient.invalidateQueries({ queryKey: ['voices'] })
+        setPreviewStatuses((current) => ({
+          ...current,
+          [voiceId]: 'ready',
+        }))
+      })
+      .catch((err) => {
+        setPreviewStatuses((current) => ({
+          ...current,
+          [voiceId]: 'failed',
+        }))
+        setError(err instanceof Error ? err.message : 'Preview failed')
+      })
+
+    previewGenerationQueue.current[voiceId] = next
+    void next.finally(() => {
+      if (previewGenerationQueue.current[voiceId] === next) {
+        delete previewGenerationQueue.current[voiceId]
+      }
+    })
+  }
 
   async function submitVoice(
     values: z.infer<typeof voiceFormSchema>,
@@ -67,7 +134,11 @@ function VoicesRoute() {
   ) {
     setError(null)
     try {
+      let voiceId: string
+      let shouldGeneratePreview = true
       if (voice) {
+        voiceId = voice.id
+        shouldGeneratePreview = previewInputsChanged(voice, values)
         const tx = voicesCollection.update(
           voice.id,
           { metadata: values },
@@ -77,17 +148,20 @@ function VoicesRoute() {
             draft.controlText = values.controlText?.trim() || null
             draft.promptText = values.promptText?.trim() || null
             draft.temperature = values.temperature
-            draft.previewAudioPath = null
-            draft.previewSentence = null
+            if (shouldGeneratePreview) {
+              draft.previewAudioPath = null
+              draft.previewSentence = null
+            }
             draft.updatedAt = new Date().toISOString()
           },
         )
         await tx.isPersisted.promise
       } else {
         const now = new Date().toISOString()
+        voiceId = `voice_${crypto.randomUUID().replaceAll('-', '')}`
         const tx = voicesCollection.insert(
           {
-            id: `voice_${crypto.randomUUID().replaceAll('-', '')}`,
+            id: voiceId,
             displayName: values.displayName,
             mode: values.mode,
             controlText: values.controlText?.trim() || null,
@@ -106,6 +180,9 @@ function VoicesRoute() {
         await tx.isPersisted.promise
       }
       await queryClient.invalidateQueries({ queryKey: ['voices'] })
+      if (shouldGeneratePreview) {
+        generatePreviewInBackground(voiceId)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Voice save failed')
       throw err
@@ -120,16 +197,6 @@ function VoicesRoute() {
       await queryClient.invalidateQueries({ queryKey: ['voices'] })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Delete failed')
-    }
-  }
-
-  async function handleGeneratePreview(voiceId: string) {
-    setError(null)
-    try {
-      await createVoicePreview(voiceId)
-      await queryClient.invalidateQueries({ queryKey: ['voices'] })
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Preview failed')
     }
   }
 
@@ -160,10 +227,10 @@ function VoicesRoute() {
               <VoiceItem
                 key={voice.id}
                 voice={voice}
+                previewStatus={previewStatuses[voice.id]}
                 onEdit={(values) => submitVoice(values, voice)}
                 onDelete={() => handleDelete(voice.id, false)}
                 onForceDelete={() => handleDelete(voice.id, true)}
-                onGeneratePreview={() => handleGeneratePreview(voice.id)}
               />
             ))}
           </ul>
@@ -175,16 +242,16 @@ function VoicesRoute() {
 
 function VoiceItem({
   voice,
+  previewStatus,
   onEdit,
   onDelete,
   onForceDelete,
-  onGeneratePreview,
 }: {
   voice: Voice
-  onEdit: (values: z.infer<typeof voiceFormSchema>) => void
+  previewStatus?: PreviewStatus
+  onEdit: (values: z.infer<typeof voiceFormSchema>) => void | Promise<void>
   onDelete: () => void
   onForceDelete: () => void
-  onGeneratePreview: () => void
 }) {
   const [open, setOpen] = useState(false)
 
@@ -192,6 +259,17 @@ function VoiceItem({
   const previewUrl = previewFileName
     ? `/api/voices/${voice.id}/preview-file/${previewFileName}`
     : null
+  const isGeneratingPreview = previewStatus === 'generating'
+  const previewFeedback =
+    previewStatus === 'generating'
+      ? null
+      : previewStatus === 'ready'
+        ? null
+        : previewStatus === 'failed'
+          ? 'Preview failed'
+          : previewUrl
+            ? null
+            : 'No preview yet'
 
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
@@ -217,10 +295,22 @@ function VoiceItem({
                 Preview
               </BracketButton>
             )}
-            {!previewUrl && (
-              <BracketButton onClick={onGeneratePreview}>
-                Generate Preview
-              </BracketButton>
+            {(isGeneratingPreview || previewFeedback) && (
+              <span
+                role={isGeneratingPreview ? 'status' : undefined}
+                aria-live="polite"
+                className={
+                  previewStatus === 'failed'
+                    ? 'text-orange-500'
+                    : 'text-foreground/50'
+                }
+              >
+                {isGeneratingPreview ? (
+                  <LoadingEllipsis>Generating preview</LoadingEllipsis>
+                ) : (
+                  previewFeedback
+                )}
+              </span>
             )}
             <VoiceDialog
               label="Edit"
@@ -253,7 +343,7 @@ function VoiceDialog({
 }: {
   label: string
   voice?: Voice
-  onSubmit: (values: z.infer<typeof voiceFormSchema>) => void
+  onSubmit: (values: z.infer<typeof voiceFormSchema>) => void | Promise<void>
 }) {
   const [open, setOpen] = useState(false)
   const title = useMemo(() => (voice ? 'Edit Voice' : 'New Voice'), [voice])

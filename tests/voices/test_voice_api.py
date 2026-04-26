@@ -309,6 +309,41 @@ def test_preview_uses_preset_sentence_and_persists_wav(monkeypatch, tmp_path):
     assert (tmp_path / "voices" / body["audio_path"]).exists()
 
 
+def test_name_only_update_preserves_existing_preview(monkeypatch, tmp_path):
+    monkeypatch.setenv("AURALIA_QWEN_TTS_PYTHON", sys.executable)
+    monkeypatch.setenv("AURALIA_QWEN_TTS_TEST_FAKE", "1")
+    client = _client(monkeypatch, tmp_path)
+    created = client.post(
+        "/api/voices",
+        data={
+            "display_name": "Preview",
+            "mode": "designed",
+            "control_text": "steady",
+            "temperature": "0.9",
+        },
+    )
+    voice_id = created.json()["id"]
+    preview = client.post(f"/api/voices/{voice_id}/preview")
+    assert preview.status_code == 200, preview.text
+    preview_body = preview.json()
+
+    updated = client.patch(
+        f"/api/voices/{voice_id}",
+        data={
+            "display_name": "Renamed preview",
+            "mode": "designed",
+            "control_text": "steady",
+            "temperature": "0.9",
+        },
+    )
+
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["display_name"] == "Renamed preview"
+    assert updated.json()["preview_audio_path"] == preview_body["audio_path"]
+    assert updated.json()["preview_sentence"] == preview_body["sentence"]
+    assert (tmp_path / "voices" / preview_body["audio_path"]).exists()
+
+
 def test_hifi_clone_preview_uses_preset_sentence_and_persists_wav(
     monkeypatch, tmp_path
 ):
