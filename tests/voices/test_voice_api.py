@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 
 from auralia_api.config import get_settings
 from auralia_api.main import app
-from auralia_api.voices.qwen_tts import generate_qwen_preview
+from auralia_api.voices.qwen_tts import _collect_stream, generate_qwen_preview
 from auralia_api.voices.service import PREVIEW_SENTENCES
 
 
@@ -29,6 +29,15 @@ def _wav_bytes() -> bytes:
         wav.setframerate(16000)
         wav.writeframes(b"\x00\x00" * 160)
     return buf.getvalue()
+
+
+def test_qwen_subprocess_collector_handles_carriage_return_progress():
+    captured: list[str] = []
+    pipe = io.StringIO("loading\r50%\rdone")
+
+    _collect_stream(pipe, captured, None)
+
+    assert "".join(captured) == "loading\r50%\rdone"
 
 
 def test_create_list_detail_and_update_designed_voice(monkeypatch, tmp_path):
@@ -71,7 +80,7 @@ def test_create_list_detail_and_update_designed_voice(monkeypatch, tmp_path):
     assert updated.json()["temperature"] == 0.75
 
 
-def test_qwen_preview_payload_includes_temperature(monkeypatch, tmp_path):
+def test_designed_qwen_preview_payload_includes_temperature(monkeypatch, tmp_path):
     monkeypatch.setenv("AURALIA_QWEN_TTS_PYTHON", sys.executable)
     get_settings.cache_clear()
     captured = {}
@@ -101,6 +110,49 @@ def test_qwen_preview_payload_includes_temperature(monkeypatch, tmp_path):
     assert captured["payload"]["temperature"] == 1.35
 
 
+def test_hifi_clone_qwen_preview_payload_uses_prompt_audio_and_text(
+    monkeypatch, tmp_path
+):
+    voice_root = tmp_path / "voices"
+    prompt_path = voice_root / "voice_clone" / "prompt.wav"
+    prompt_path.parent.mkdir(parents=True)
+    prompt_path.write_bytes(_wav_bytes())
+    monkeypatch.setenv("AURALIA_QWEN_TTS_PYTHON", sys.executable)
+    monkeypatch.setenv("AURALIA_VOICE_STORAGE_PATH", str(voice_root))
+    monkeypatch.setenv("AURALIA_QWEN_TTS_VOICE_CLONE_MODEL", "clone-model")
+    get_settings.cache_clear()
+    captured = {}
+    output_path = tmp_path / "preview.wav"
+
+    def fake_run_qwen_subprocess(*, command, payload, timeout_seconds, env):
+        captured["payload"] = payload
+        output_path.write_bytes(_wav_bytes())
+        return {"returncode": 0, "stdout": '{"ok": true}', "stderr": ""}
+
+    monkeypatch.setattr(
+        "auralia_api.voices.qwen_tts._run_qwen_subprocess",
+        fake_run_qwen_subprocess,
+    )
+
+    generate_qwen_preview(
+        voice={
+            "id": "voice_clone",
+            "mode": "hifi_clone",
+            "prompt_audio_path": "voice_clone/prompt.wav",
+            "prompt_text": "The exact words in the sample.",
+            "temperature": 0.8,
+        },
+        text="Preview text.",
+        output_path=output_path,
+    )
+
+    assert captured["payload"]["mode"] == "hifi_clone"
+    assert captured["payload"]["model"] == "clone-model"
+    assert captured["payload"]["ref_audio"] == str(prompt_path)
+    assert captured["payload"]["ref_text"] == "The exact words in the sample."
+    assert captured["payload"]["temperature"] == 0.8
+
+
 def test_upload_imports_clone_audio_under_voice_storage(monkeypatch, tmp_path):
     client = _client(monkeypatch, tmp_path)
 
@@ -125,6 +177,18 @@ def test_validation_reports_missing_mode_requirements(monkeypatch, tmp_path):
 
     assert response.status_code == 422
     assert response.json()["detail"]["errors"][0]["code"] == "missing_control_text"
+
+
+def test_hifi_clone_requires_prompt_text(monkeypatch, tmp_path):
+    client = _client(monkeypatch, tmp_path)
+    response = client.post(
+        "/api/voices",
+        data={"display_name": "Clone", "mode": "hifi_clone"},
+        files={"prompt_audio": ("sample.wav", _wav_bytes(), "audio/wav")},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"]["errors"][0]["code"] == "missing_prompt_text"
 
 
 def test_delete_blocks_mapped_voice_and_force_removes_mapping(monkeypatch, tmp_path):
@@ -239,6 +303,34 @@ def test_preview_uses_preset_sentence_and_persists_wav(monkeypatch, tmp_path):
     voice_id = created.json()["id"]
 
     response = client.post(f"/api/voices/{voice_id}/preview")
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["sentence"] in PREVIEW_SENTENCES
+    assert (tmp_path / "voices" / body["audio_path"]).exists()
+
+
+def test_hifi_clone_preview_uses_preset_sentence_and_persists_wav(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setenv("AURALIA_QWEN_TTS_PYTHON", sys.executable)
+    monkeypatch.setenv("AURALIA_QWEN_TTS_TEST_FAKE", "1")
+    client = _client(monkeypatch, tmp_path)
+    created = client.post(
+        "/api/voices",
+        data={
+            "display_name": "Hifi Clone",
+            "mode": "hifi_clone",
+            "prompt_text": "The exact transcript for this sample.",
+            "temperature": "0.85",
+        },
+        files={"prompt_audio": ("sample.wav", _wav_bytes(), "audio/wav")},
+    )
+    assert created.status_code == 201, created.text
+    voice_id = created.json()["id"]
+    assert created.json()["prompt_audio_path"].endswith("prompt.wav")
+
+    response = client.post(f"/api/voices/{voice_id}/preview")
+
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["sentence"] in PREVIEW_SENTENCES

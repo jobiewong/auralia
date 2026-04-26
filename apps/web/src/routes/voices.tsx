@@ -31,6 +31,7 @@ import {
 } from '~/components/ui/field'
 import { Input } from '~/components/ui/input'
 import { Select } from '~/components/ui/select'
+import { Slider } from '~/components/ui/slider'
 import { Textarea } from '~/components/ui/textarea'
 import type { Voice } from '~/db-collections'
 import { getVoicesCollection, preloadVoices, useVoices } from '~/db-collections'
@@ -275,6 +276,7 @@ function VoiceDialog({
   })
 
   const mode = form.watch('mode')
+  const showTemperature = mode === 'designed' || mode === 'hifi_clone'
 
   async function handleSubmit(values: z.infer<typeof voiceFormSchema>) {
     await onSubmit(values)
@@ -370,38 +372,50 @@ function VoiceDialog({
                     </Field>
                   )}
                 />
-                <Controller
-                  name="temperature"
-                  control={form.control}
-                  render={({ field, fieldState }) => (
+              </>
+            )}
+            {showTemperature && (
+              <Controller
+                name="temperature"
+                control={form.control}
+                render={({ field, fieldState }) => {
+                  const temperatureValue = Array.isArray(field.value)
+                    ? (field.value[0] ?? 0.9)
+                    : field.value
+
+                  return (
                     <Field>
                       <div className="flex items-center justify-between gap-4">
                         <FieldLabel htmlFor="temperature">
                           Temperature
                         </FieldLabel>
-                        <span className="font-mono text-sm text-foreground/60">
-                          {field.value.toFixed(2)}
+                        <span className="font-mono text-sm text-orange-500/60">
+                          {temperatureValue.toFixed(2)}
                         </span>
                       </div>
-                      <Input
-                        id="temperature"
-                        type="range"
-                        min="0.1"
-                        max="2"
-                        step="0.05"
-                        value={field.value}
-                        onChange={(event) =>
-                          field.onChange(event.currentTarget.valueAsNumber)
-                        }
-                        aria-invalid={fieldState.invalid}
-                      />
+                      <div className="w-full flex items-center gap-2">
+                        <Slider
+                          id="temperature"
+                          aria-invalid={fieldState.invalid}
+                          className="w-full"
+                          min={0.1}
+                          max={2.0}
+                          step={0.05}
+                          name={field.name}
+                          onBlur={field.onBlur}
+                          value={[temperatureValue]}
+                          onValueChange={(value) => {
+                            field.onChange(value[0] ?? 0.9)
+                          }}
+                        />
+                      </div>
                       {fieldState.invalid ? (
                         <FieldError errors={[fieldState.error]} />
                       ) : null}
                     </Field>
-                  )}
-                />
-              </>
+                  )
+                }}
+              />
             )}
             {mode === 'clone' && (
               <Controller
@@ -425,25 +439,47 @@ function VoiceDialog({
               />
             )}
             {mode === 'hifi_clone' && (
-              <Controller
-                name="promptAudio"
-                control={form.control}
-                render={({ field, fieldState }) => (
-                  <Field>
-                    <FieldLabel>Prompt audio</FieldLabel>
-                    <AudioUpload
-                      files={field.value ? [field.value] : []}
-                      setFiles={(nextFiles) => {
-                        field.onChange(nextFiles[0] ?? undefined)
-                      }}
-                      onFileReject={() => {}}
-                    />
-                    {fieldState.invalid ? (
-                      <FieldError errors={[fieldState.error]} />
-                    ) : null}
-                  </Field>
-                )}
-              />
+              <>
+                <Controller
+                  name="promptAudio"
+                  control={form.control}
+                  render={({ field, fieldState }) => (
+                    <Field>
+                      <FieldLabel>Prompt audio</FieldLabel>
+                      <AudioUpload
+                        files={field.value ? [field.value] : []}
+                        setFiles={(nextFiles) => {
+                          field.onChange(nextFiles[0] ?? undefined)
+                        }}
+                        onFileReject={() => {}}
+                      />
+                      {fieldState.invalid ? (
+                        <FieldError errors={[fieldState.error]} />
+                      ) : null}
+                    </Field>
+                  )}
+                />
+                <Controller
+                  name="promptText"
+                  control={form.control}
+                  render={({ field, fieldState }) => (
+                    <Field>
+                      <FieldLabel id="prompt-text">
+                        Prompt transcript
+                      </FieldLabel>
+                      <Textarea
+                        {...field}
+                        id="prompt-text"
+                        aria-invalid={fieldState.invalid}
+                        className="min-h-24"
+                      />
+                      {fieldState.invalid ? (
+                        <FieldError errors={[fieldState.error]} />
+                      ) : null}
+                    </Field>
+                  )}
+                />
+              </>
             )}
           </FieldGroup>
           <DialogFooter>

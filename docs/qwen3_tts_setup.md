@@ -35,6 +35,7 @@ Set these values in the repo-root `.env`:
 ```env
 AURALIA_QWEN_TTS_PYTHON=/home/jobie/miniconda3/envs/qwen3-tts/bin/python
 AURALIA_QWEN_TTS_VOICE_DESIGN_MODEL=Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign
+AURALIA_QWEN_TTS_VOICE_CLONE_MODEL=Qwen/Qwen3-TTS-12Hz-1.7B-Base
 AURALIA_QWEN_TTS_DEVICE=cuda:0
 AURALIA_QWEN_TTS_DTYPE=bfloat16
 AURALIA_QWEN_TTS_DEFAULT_LANGUAGE=English

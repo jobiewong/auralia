@@ -83,6 +83,12 @@ class Settings(BaseSettings):
         default="Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign",
         description="Qwen3-TTS VoiceDesign model id or local model directory.",
     )
+    qwen_tts_voice_clone_model: str = Field(
+        default="Qwen/Qwen3-TTS-12Hz-1.7B-Base",
+        description=(
+            "Qwen3-TTS Base model id or local model directory for voice cloning."
+        ),
+    )
     qwen_tts_device: str = Field(default="cuda:0")
     qwen_tts_dtype: str = Field(default="bfloat16")
     qwen_tts_default_language: str = Field(default="English")

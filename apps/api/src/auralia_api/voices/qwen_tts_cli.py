@@ -23,13 +23,13 @@ def main() -> int:
         return 0
 
     mode = payload.get("mode")
-    if mode != "designed":
+    if mode not in {"designed", "hifi_clone"}:
         raise ValueError(f"Unsupported Qwen preview mode: {mode}")
 
     _status("importing runtime packages")
-    import soundfile as sf
-    import torch
-    from qwen_tts import Qwen3TTSModel
+    import soundfile as sf  # type: ignore[import-not-found]
+    import torch  # type: ignore[import-not-found]
+    from qwen_tts import Qwen3TTSModel  # type: ignore[import-not-found]
 
     device = str(payload.get("device") or "cuda:0")
     cuda_available = torch.cuda.is_available()
@@ -55,15 +55,27 @@ def main() -> int:
     except Exception:
         _status("flash_attention_2 load failed; retrying without it")
         model = Qwen3TTSModel.from_pretrained(payload["model"], **model_kwargs)
+    _status("model loaded")
     temperature = float(payload.get("temperature") or 0.9)
-    _status(f"generating voice design preview temperature={temperature}")
-    wavs, sr = model.generate_voice_design(
-        text=payload["text"],
-        language=payload.get("language") or "English",
-        instruct=payload.get("instruct") or "",
-        temperature=temperature,
-        subtalker_temperature=temperature,
-    )
+    if mode == "designed":
+        _status(f"generating voice design preview temperature={temperature}")
+        wavs, sr = model.generate_voice_design(
+            text=payload["text"],
+            language=payload.get("language") or "English",
+            instruct=payload.get("instruct") or "",
+            temperature=temperature,
+            subtalker_temperature=temperature,
+        )
+    else:
+        _status(f"generating hifi clone preview temperature={temperature}")
+        wavs, sr = model.generate_voice_clone(
+            text=payload["text"],
+            language=payload.get("language") or "English",
+            ref_audio=payload["ref_audio"],
+            ref_text=payload["ref_text"],
+            temperature=temperature,
+            subtalker_temperature=temperature,
+        )
     sf.write(str(output_path), wavs[0], sr)
     _status(f"wrote {output_path}")
     print(json.dumps({"output_path": str(output_path), "sample_rate": sr}))

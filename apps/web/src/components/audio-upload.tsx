@@ -1,5 +1,4 @@
 import { BracketButton } from '~/components/bracket-button'
-import { UploadIcon } from '~/components/icons/upload'
 import { Button } from '~/components/ui/button'
 import {
   FileUpload,
@@ -49,10 +48,11 @@ export function AudioUpload({
       <FileUploadList>
         {files.map((file, index) => (
           <FileUploadItem key={index} value={file}>
-            <FileUploadItemPreview />
             <FileUploadItemMetadata />
             <FileUploadItemDelete asChild>
-              <BracketButton>x</BracketButton>
+              <BracketButton className="hover:text-orange-500/70">
+                x
+              </BracketButton>
             </FileUploadItemDelete>
           </FileUploadItem>
         ))}

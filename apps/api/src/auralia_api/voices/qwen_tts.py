@@ -24,7 +24,7 @@ def generate_qwen_preview(
     text: str,
     output_path: Path,
 ) -> None:
-    if voice["mode"] != "designed":
+    if voice["mode"] not in {"designed", "hifi_clone"}:
         raise VoicePreviewUnavailableError(
             f"Qwen preview is not implemented for {voice['mode']} voices yet"
         )
@@ -37,16 +37,34 @@ def generate_qwen_preview(
         )
 
     payload = {
-        "mode": "designed",
+        "mode": voice["mode"],
         "text": text,
         "output_path": str(output_path),
         "language": settings.qwen_tts_default_language,
-        "model": settings.qwen_tts_voice_design_model,
         "device": settings.qwen_tts_device,
         "dtype": settings.qwen_tts_dtype,
-        "instruct": voice.get("control_text") or "",
         "temperature": voice.get("temperature", 0.9),
     }
+    if voice["mode"] == "designed":
+        payload.update(
+            {
+                "model": settings.qwen_tts_voice_design_model,
+                "instruct": voice.get("control_text") or "",
+            }
+        )
+    else:
+        prompt_audio_path = voice.get("prompt_audio_path")
+        if not prompt_audio_path:
+            raise VoicePreviewUnavailableError(
+                "hifi_clone preview requires prompt audio"
+            )
+        payload.update(
+            {
+                "model": settings.qwen_tts_voice_clone_model,
+                "ref_audio": str(_voice_asset_path(prompt_audio_path)),
+                "ref_text": voice.get("prompt_text") or "",
+            }
+        )
     env = os.environ.copy()
     src_path = str(Path(__file__).resolve().parents[2])
     cache_dir = Path(settings.qwen_tts_numba_cache_dir)
@@ -71,7 +89,7 @@ def generate_qwen_preview(
     logger.info(
         "Starting Qwen TTS preview voice_id=%s model=%s device=%s output=%s",
         voice["id"],
-        settings.qwen_tts_voice_design_model,
+        payload["model"],
         settings.qwen_tts_device,
         output_path,
     )
@@ -83,7 +101,7 @@ def generate_qwen_preview(
     )
 
     if result["returncode"] != 0:
-        detail = _tail(result["stderr"])
+        detail = _tail(str(result["stderr"]))
         raise VoicePreviewUnavailableError(
             detail
             or f"Qwen preview generation failed with exit code {result['returncode']}. "
@@ -118,12 +136,12 @@ def _run_qwen_subprocess(
     stdout_lines: list[str] = []
     stderr_lines: list[str] = []
     stdout_thread = threading.Thread(
-        target=_collect_lines,
+        target=_collect_stream,
         args=(process.stdout, stdout_lines, None),
         daemon=True,
     )
     stderr_thread = threading.Thread(
-        target=_collect_lines,
+        target=_collect_stream,
         args=(process.stderr, stderr_lines, sys.stderr),
         daemon=True,
     )
@@ -151,13 +169,14 @@ def _run_qwen_subprocess(
     }
 
 
-def _collect_lines(pipe: Any, lines: list[str], mirror: Any | None) -> None:
+def _collect_stream(pipe: Any, lines: list[str], mirror: Any | None) -> None:
     if pipe is None:
         return
-    for line in iter(pipe.readline, ""):
-        lines.append(line)
+    while chunk := pipe.read(1):
+        lines.append(chunk)
         if mirror is not None:
-            print(line, end="", file=mirror, flush=True)
+            mirror.write(chunk)
+            mirror.flush()
 
 
 def _tail(value: str, *, max_chars: int = 2000) -> str:
@@ -178,3 +197,11 @@ def _parse_json_status(stdout: str) -> dict[str, Any]:
     raise VoicePreviewUnavailableError(
         "Qwen preview completed but did not return a JSON status line"
     )
+
+
+def _voice_asset_path(relative_path: str) -> Path:
+    root = Path(get_settings().voice_storage_path).resolve()
+    path = (root / relative_path).resolve()
+    if root != path and root not in path.parents:
+        raise VoicePreviewUnavailableError("voice asset path escapes voice storage")
+    return path
