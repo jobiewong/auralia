@@ -58,7 +58,7 @@ function VoicesRoute() {
   const queryClient = useQueryClient()
   const voicesCollection = getVoicesCollection(queryClient)
   const [error, setError] = useState<string | null>(null)
-  const voices = useVoices() ?? []
+  const voices = useVoices()
 
   async function submitVoice(
     values: z.infer<typeof voiceFormSchema>,
@@ -341,6 +341,11 @@ function VoiceDialog({
                       { value: 'clone', label: 'clone' },
                       { value: 'hifi_clone', label: 'hifi clone' },
                     ]}
+                    onValueChange={(value) => {
+                      field.onChange(
+                        value as 'designed' | 'clone' | 'hifi_clone',
+                      )
+                    }}
                   />
                 </Field>
               )}
@@ -442,11 +447,7 @@ function VoiceDialog({
             )}
           </FieldGroup>
           <DialogFooter>
-            <Button
-              type="submit"
-              variant="confirm"
-              size="lg"
-            >
+            <Button type="submit" variant="confirm" size="lg">
               {voice ? 'Save Voice' : 'Create Voice'}
             </Button>
             <Button

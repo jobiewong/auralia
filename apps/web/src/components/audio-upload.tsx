@@ -27,7 +27,7 @@ export function AudioUpload({
     <FileUpload
       maxFiles={1}
       maxSize={5 * 1024 * 1024}
-      className="w-full max-w-md"
+      className="w-full"
       value={files}
       onValueChange={setFiles}
       onFileReject={onFileReject}
@@ -35,16 +35,13 @@ export function AudioUpload({
     >
       <FileUploadDropzone>
         <div className="flex flex-col items-center gap-1 text-center">
-          <div className="flex items-center justify-center rounded-full border p-2.5">
-            <UploadIcon className="size-6 text-muted-foreground" />
-          </div>
           <p className="font-medium text-sm">Drag & drop files here</p>
-          <p className="text-muted-foreground text-xs">
+          <p className="text-orange-500/50 text-xs">
             Or click to browse (max 2 files, up to 5MB each)
           </p>
         </div>
         <FileUploadTrigger asChild>
-          <Button size="sm" className="mt-2 w-fit">
+          <Button size="sm" className="mt-2 w-fit" variant="cancel">
             Browse files
           </Button>
         </FileUploadTrigger>
