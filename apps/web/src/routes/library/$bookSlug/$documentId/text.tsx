@@ -5,24 +5,11 @@ import { useServerFn } from '@tanstack/react-start'
 import type { ReactNode } from 'react'
 import { useMemo, useState } from 'react'
 import { BracketButton } from '~/components/bracket-button'
-import { Button } from '~/components/ui/button'
-import type { ComboboxOption } from '~/components/ui/combobox-custom'
-import { Combobox } from '~/components/ui/combobox-custom'
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '~/components/ui/dialog'
 import type { DocumentSpan } from '~/db-collections'
 import { useDocumentDiagnostics, useDocumentSpans } from '~/db-collections'
-import { updateSpanAttribution } from '~/db/documents'
-import { runCastDetection, runSegmentation } from '~/lib/pipeline-api'
+import { updateSpanAttribution } from '~/server/documents'
+import { runCastDetection, runSegmentation } from '~/server/pipeline-api'
 import {
-  cn,
   countAttributed,
   countByType,
   countUnknown,
@@ -30,9 +17,10 @@ import {
   formatCount,
   formatMetric,
   formatSpanCount,
-  formatTextLength,
   parseRoster,
 } from '~/lib/utils'
+import { PipelineRerunDialog } from './-components/pipeline-rerun-dialog'
+import { Span } from './-components/span'
 
 export const Route = createFileRoute('/library/$bookSlug/$documentId/text')({
   component: RouteComponent,
@@ -325,59 +313,6 @@ function RouteComponent() {
   )
 }
 
-function PipelineRerunDialog({
-  stage,
-  isRunning,
-  onOpenChange,
-  onConfirm,
-}: {
-  stage: 'segmentation' | 'cast detection' | null
-  isRunning: boolean
-  onOpenChange: (open: boolean) => void
-  onConfirm: () => Promise<void>
-}) {
-  const copy =
-    stage === 'segmentation'
-      ? {
-          title: 'Re-run segmentation',
-          description:
-            'This will delete and regenerate spans, reset cast detection, attribution, and synthesis-derived outputs. Manual cast edits will be preserved, but cast detection must be run again.',
-          confirmLabel: 'Re-run Segmentation',
-        }
-      : {
-          title: 'Re-run cast detection',
-          description:
-            'This will delete regenerated cast evidence, reset attribution and synthesis-derived outputs, then detect cast again. Manual cast edits and deletions will be preserved.',
-          confirmLabel: 'Re-run Cast Detection',
-        }
-
-  return (
-    <Dialog open={stage !== null} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{copy.title}</DialogTitle>
-          <DialogDescription>{copy.description}</DialogDescription>
-        </DialogHeader>
-        <DialogFooter>
-          <Button
-            variant="confirm"
-            disabled={isRunning}
-            onClick={onConfirm}
-            size="lg"
-          >
-            {isRunning ? 'Running' : copy.confirmLabel}
-          </Button>
-          <DialogClose asChild>
-            <Button variant="cancel" disabled={isRunning} size="lg">
-              Cancel
-            </Button>
-          </DialogClose>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
 function FilterButton({
   filter,
   value,
@@ -393,115 +328,6 @@ function FilterButton({
     <BracketButton active={filter === value} onClick={() => onChange(value)}>
       {children}
     </BracketButton>
-  )
-}
-
-function Span({
-  span,
-  index,
-  context,
-  speakerOptions,
-  isActive,
-  onActivate,
-  onSave,
-}: {
-  span: DocumentSpan
-  index: number
-  context: boolean
-  speakerOptions: ComboboxOption[]
-  isActive: boolean
-  onActivate: () => void
-  onSave: (data: {
-    spanId: string
-    speaker: string
-    needsReview: boolean
-  }) => Promise<void>
-}) {
-  const showEditor =
-    span.type === 'dialogue' &&
-    (isActive || span.needsReview || span.speaker === 'UNKNOWN')
-
-  return (
-    <li
-      id={`span-${span.id}`}
-      className={cn(
-        'grid gap-2 py-1.5 px-2 font-serif sm:grid-cols-[4rem_9rem_minmax(0,1fr)] sm:items-baseline hover:bg-orange-950/5',
-        context && 'opacity-60',
-        span.needsReview && 'bg-orange-950/10 hover:bg-orange-950/10',
-      )}
-      onClick={onActivate}
-    >
-      <p className="text-foreground/50">{String(index + 1).padStart(2, '0')}</p>
-      <p className="text-foreground/50">{span.type}</p>
-      <div>
-        {span.speaker && (
-          <p className="mb-1 text-foreground/50">
-            {span.speaker} / {formatConfidence(span.speakerConfidence)}
-            {span.needsReview ? ' / needs review' : ''}
-          </p>
-        )}
-        <p className="leading-tight">{span.text}</p>
-        <p className="text-foreground/50">
-          {span.start}-{span.end} / {formatTextLength(span.end - span.start)}
-        </p>
-        {showEditor && (
-          <SpanAttributionEditor
-            span={span}
-            speakerOptions={speakerOptions}
-            onSave={onSave}
-          />
-        )}
-      </div>
-    </li>
-  )
-}
-
-function SpanAttributionEditor({
-  span,
-  speakerOptions,
-  onSave,
-}: {
-  span: DocumentSpan
-  speakerOptions: ComboboxOption[]
-  onSave: (data: {
-    spanId: string
-    speaker: string
-    needsReview: boolean
-  }) => Promise<void>
-}) {
-  const [speaker, setSpeaker] = useState(span.speaker ?? 'UNKNOWN')
-  const [isSaving, setIsSaving] = useState(false)
-
-  async function save(nextSpeaker = speaker, needsReview = false) {
-    setIsSaving(true)
-    try {
-      await onSave({
-        spanId: span.id,
-        speaker: nextSpeaker,
-        needsReview,
-      })
-    } finally {
-      setIsSaving(false)
-    }
-  }
-
-  return (
-    <div
-      className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-foreground/70"
-      onClick={(event) => event.stopPropagation()}
-    >
-      <span>speaker:</span>
-      <Combobox
-        value={speaker}
-        options={speakerOptions}
-        searchPlaceholder="Search speakers"
-        allowCustom
-        onValueChange={setSpeaker}
-      />
-      <BracketButton disabled={isSaving} onClick={() => save()}>
-        Save
-      </BracketButton>
-    </div>
   )
 }
 

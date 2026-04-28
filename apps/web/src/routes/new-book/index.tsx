@@ -16,13 +16,13 @@ import {
 } from '~/components/ui/field'
 import { Input } from '~/components/ui/input'
 import { ProgressArc } from '~/components/ui/progress-arc'
-import { getDocumentRouteTarget } from '~/db/documents'
-import { createWork } from '~/db/works'
+import { getDocumentRouteTarget } from '~/server/documents'
+import { createWork } from '~/server/works'
 import { formatElapsed, useElapsedSeconds } from '~/hooks/use-elapsed-seconds'
 import { getAo3WorkDraft, parseAo3Url } from '~/lib/ao3'
 import type { Ao3UrlFormValues } from '~/lib/forms'
 import { ao3UrlFormSchema } from '~/lib/forms'
-import { ingestAo3Chapter, runSegmentation } from '~/lib/pipeline-api'
+import { ingestAo3Chapter, runSegmentation } from '~/server/pipeline-api'
 
 export const Route = createFileRoute('/new-book/')({
   ssr: false,

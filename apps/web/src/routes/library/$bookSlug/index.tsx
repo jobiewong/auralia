@@ -11,8 +11,8 @@ import {
   useBookDocuments,
   useBooks,
 } from '~/db-collections'
-import { deleteDocument } from '~/db/documents'
-import { deleteWork, updateWorkTitle } from '~/db/works'
+import { deleteDocument } from '~/server/documents'
+import { deleteWork, updateWorkTitle } from '~/server/works'
 import {
   formatDate,
   formatSpanCount,

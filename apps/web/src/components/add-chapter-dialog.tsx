@@ -23,11 +23,11 @@ import {
   FieldLabel,
 } from '~/components/ui/field'
 import { Input } from '~/components/ui/input'
-import { getDocumentRouteTarget } from '~/db/documents'
+import { getDocumentRouteTarget } from '~/server/documents'
 import { parseAo3Url } from '~/lib/ao3'
 import type { Ao3UrlFormValues } from '~/lib/forms'
 import { ao3UrlFormSchema } from '~/lib/forms'
-import { ingestAo3Chapter, runSegmentation } from '~/lib/pipeline-api'
+import { ingestAo3Chapter, runSegmentation } from '~/server/pipeline-api'
 
 export function AddChapterDialog({
   bookSlug,

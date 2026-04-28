@@ -1,44 +1,21 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { motion } from 'motion/react'
-import type { ReactNode } from 'react'
 import { useState } from 'react'
 import { Play } from '~/components/icons/play'
 
 import { Button } from '~/components/ui/button'
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '~/components/ui/dialog'
-import { ProgressArc } from '~/components/ui/progress-arc'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '~/components/ui/tooltip'
 import { useDocumentDiagnostics, useDocumentSpans } from '~/db-collections'
-import {
-  diffSeconds,
-  formatElapsed,
-  useElapsedSecondsFromTimestamp,
-} from '~/hooks/use-elapsed-seconds'
 import {
   runAttribution,
   runCastDetection,
   runSegmentation,
-} from '~/lib/pipeline-api'
+} from '~/server/pipeline-api'
 import {
-  cn,
   countReviewSpans,
-  formatDate,
-  formatJsonSummary,
   formatMetric,
 } from '~/lib/utils'
+import { PipelineRerunDialog } from './-components/pipeline-rerun-dialog'
+import { PipelineStage } from './-components/pipeline-stage'
 
 export const Route = createFileRoute('/library/$bookSlug/$documentId/')({
   component: RouteComponent,
@@ -333,130 +310,6 @@ function RouteComponent() {
   )
 }
 
-function PipelineRerunDialog({
-  stage,
-  isRunning,
-  onOpenChange,
-  onConfirm,
-}: {
-  stage: 'segmentation' | 'cast detection' | null
-  isRunning: boolean
-  onOpenChange: (open: boolean) => void
-  onConfirm: () => Promise<void>
-}) {
-  const copy =
-    stage === 'segmentation'
-      ? {
-          title: 'Re-run segmentation',
-          description:
-            'This will delete and regenerate spans, reset cast detection, attribution, and synthesis-derived outputs. Manual cast edits will be preserved, but cast detection must be run again.',
-          confirmLabel: 'Re-run Segmentation',
-        }
-      : {
-          title: 'Re-run cast detection',
-          description:
-            'This will delete regenerated cast evidence, reset attribution and synthesis-derived outputs, then detect cast again. Manual cast edits and deletions will be preserved.',
-          confirmLabel: 'Re-run Cast Detection',
-        }
-
-  return (
-    <Dialog open={stage !== null} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{copy.title}</DialogTitle>
-          <DialogDescription>{copy.description}</DialogDescription>
-        </DialogHeader>
-        <DialogFooter>
-          <Button
-            variant="confirm"
-            disabled={isRunning}
-            onClick={onConfirm}
-            size="lg"
-          >
-            {isRunning ? 'Running' : copy.confirmLabel}
-          </Button>
-          <DialogClose asChild>
-            <Button variant="cancel" disabled={isRunning} size="lg">
-              Cancel
-            </Button>
-          </DialogClose>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-function PipelineStage({
-  label,
-  status,
-  detail,
-  diagnostics,
-  timerJob,
-  action,
-}: {
-  label: string
-  status: string
-  detail: ReactNode
-  diagnostics?: {
-    id: string
-    status: string
-    modelName?: string | null
-    stats?: string | null
-    errorReport?: string | null
-    completedAt?: string | null
-    createdAt: string
-    updatedAt: string
-  } | null
-  timerJob?: {
-    status: string
-    createdAt: string
-  } | null
-  action?: ReactNode
-}) {
-  return (
-    <li className="grid grid-cols-[4rem_1fr]">
-      <div className="relative flex justify-center">
-        <div className="h-full w-px bg-foreground" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border bg-background grid place-content-center p-0.5 border-foreground">
-          <motion.div
-            animate={{
-              scale: status === 'completed' ? 1 : 0,
-            }}
-            className="size-3 bg-foreground rounded-full"
-          />
-        </div>
-      </div>
-      <div className="flex flex-col gap-2 mb-8">
-        <div>
-          <Tooltip>
-            <p>{label}</p>
-            <TooltipTrigger asChild>
-              <p
-                className={cn(
-                  'cursor-help w-fit',
-                  !diagnostics && 'cursor-default',
-                )}
-              >
-                <span className="uppercase opacity-70">{status}</span>
-                <span className="text-foreground/40 ml-2">-- {detail}</span>
-              </p>
-            </TooltipTrigger>
-            {diagnostics ? (
-              <TooltipContent>
-                <JobSummary title={label} job={diagnostics} />
-              </TooltipContent>
-            ) : null}
-          </Tooltip>
-        </div>
-        <div className="flex items-center gap-4">
-          {action ?? null}
-          {timerJob ? <JobTimer job={timerJob} /> : null}
-        </div>
-      </div>
-    </li>
-  )
-}
-
 function PipelineActionButton({
   completed,
   disabled,
@@ -497,88 +350,6 @@ function PipelineActionButton({
       <Play className="size-5" />
       {runLabel}
     </Button>
-  )
-}
-
-function JobTimer({
-  job,
-}: {
-  job: {
-    status: string
-    createdAt: string
-  }
-}) {
-  const elapsed = useElapsedSecondsFromTimestamp(job.createdAt)
-
-  return (
-    <p className="flex items-center gap-2 font-serif text-lg text-foreground/60">
-      <ProgressArc className="size-5" />
-      {job.status} for {formatElapsed(elapsed)}
-    </p>
-  )
-}
-
-function JobSummary({
-  title,
-  job,
-}: {
-  title: string
-  job: {
-    id: string
-    status: string
-    modelName?: string | null
-    stats?: string | null
-    errorReport?: string | null
-    completedAt?: string | null
-    createdAt: string
-    updatedAt: string
-  } | null
-}) {
-  const activeElapsed = useElapsedSecondsFromTimestamp(
-    job && isActiveJobStatus(job.status) ? job.createdAt : null,
-  )
-  const duration =
-    job && isActiveJobStatus(job.status)
-      ? formatElapsed(activeElapsed)
-      : job?.completedAt && job.createdAt
-        ? formatElapsed(diffSeconds(job.createdAt, job.completedAt))
-        : null
-
-  return (
-    <div className="font-serif">
-      <h2 className="mb-2 border-b pb-2 border-orange-500 -mx-3 px-3 text-3xl">
-        {title}
-      </h2>
-      {!job ? (
-        <p className="text-orange-500/50">No job recorded.</p>
-      ) : (
-        <dl className="grid gap-2 border-t py-5 sm:grid-cols-[9rem_1fr]">
-          <dt className="text-orange-500/50">Status</dt>
-          <dd>{job.status}</dd>
-          <dt className="text-orange-500/50">Started</dt>
-          <dd>{formatDate(job.createdAt, true)}</dd>
-          <dt className="text-orange-500/50">Completed</dt>
-          <dd>
-            {job.completedAt
-              ? formatDate(job.completedAt, true)
-              : 'not complete'}
-          </dd>
-          <dt className="text-orange-500/50">Duration</dt>
-          <dd>
-            {duration ??
-              (job.status === 'failed' ? 'not recorded' : 'not complete')}
-          </dd>
-          <dt className="text-orange-500/50">Updated</dt>
-          <dd>{formatDate(job.updatedAt, true)}</dd>
-          <dt className="text-orange-500/50">Model</dt>
-          <dd>{job.modelName || 'none'}</dd>
-          <dt className="text-orange-500/50">Stats</dt>
-          <dd>{formatJsonSummary(job.stats)}</dd>
-          <dt className="text-orange-500/50">Error</dt>
-          <dd>{formatJsonSummary(job.errorReport)}</dd>
-        </dl>
-      )}
-    </div>
   )
 }
 

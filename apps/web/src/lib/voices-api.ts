@@ -1,8 +1,13 @@
-type ApiErrorBody = {
-  detail?: unknown
-}
+import {
+  deleteJson,
+  getJson,
+  patchForm,
+  postForm,
+  postJson,
+} from '~/lib/http'
+import type { VoiceFormValues, VoiceMode } from '~/lib/voices.types'
 
-export type VoiceMode = 'designed' | 'clone' | 'hifi_clone'
+export type { VoiceMode, VoiceFormValues } from '~/lib/voices.types'
 
 export type Voice = {
   id: string
@@ -28,17 +33,6 @@ export type VoiceMapping = {
   voiceName: string | null
   createdAt: string
   updatedAt: string
-}
-
-export type VoiceFormValues = {
-  voiceId?: string
-  displayName: string
-  mode: VoiceMode
-  controlText?: string
-  referenceAudio?: File
-  promptAudio?: File
-  promptText?: string
-  temperature: number
 }
 
 type ApiVoice = {
@@ -180,67 +174,4 @@ function fromApiVoiceMapping(mapping: ApiVoiceMapping): VoiceMapping {
     createdAt: mapping.created_at,
     updatedAt: mapping.updated_at,
   }
-}
-
-async function getJson<T>(path: string): Promise<T> {
-  const response = await fetch(path)
-  return handleJson<T>(response)
-}
-
-async function postJson<T>(path: string, body: unknown): Promise<T> {
-  const response = await fetch(path, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
-  return handleJson<T>(response)
-}
-
-async function postForm<T>(path: string, body: FormData): Promise<T> {
-  const response = await fetch(path, { method: 'POST', body })
-  return handleJson<T>(response)
-}
-
-async function patchForm<T>(path: string, body: FormData): Promise<T> {
-  const response = await fetch(path, { method: 'PATCH', body })
-  return handleJson<T>(response)
-}
-
-async function deleteJson<T>(path: string): Promise<T> {
-  const response = await fetch(path, { method: 'DELETE' })
-  return handleJson<T>(response)
-}
-
-async function handleJson<T>(response: Response): Promise<T> {
-  if (!response.ok) {
-    throw new Error(await getErrorMessage(response))
-  }
-  return (await response.json()) as T
-}
-
-async function getErrorMessage(response: Response) {
-  try {
-    const body = (await response.json()) as ApiErrorBody
-    const detail = body.detail
-    if (typeof detail === 'string') {
-      return detail
-    }
-    if (
-      typeof detail === 'object' &&
-      detail !== null &&
-      'errors' in detail &&
-      Array.isArray(detail.errors)
-    ) {
-      return detail.errors
-        .map((error) =>
-          typeof error === 'object' && error && 'message' in error
-            ? String(error.message)
-            : 'Request failed',
-        )
-        .join('; ')
-    }
-  } catch {
-    // Fall back below.
-  }
-  return response.statusText || `Request failed with ${response.status}`
 }

@@ -13,6 +13,7 @@ import { Route as WorkbenchRouteImport } from './routes/workbench'
 import { Route as VoicesRouteImport } from './routes/voices'
 import { Route as AboutRouteImport } from './routes/about'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as VoicesIndexRouteImport } from './routes/voices/index'
 import { Route as NewBookIndexRouteImport } from './routes/new-book/index'
 import { Route as LibraryIndexRouteImport } from './routes/library/index'
 import { Route as LibraryBookSlugIndexRouteImport } from './routes/library/$bookSlug/index'
@@ -41,6 +42,11 @@ const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
+} as any)
+const VoicesIndexRoute = VoicesIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => VoicesRoute,
 } as any)
 const NewBookIndexRoute = NewBookIndexRouteImport.update({
   id: '/new-book/',
@@ -91,10 +97,11 @@ const LibraryBookSlugDocumentIdCastRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
-  '/voices': typeof VoicesRoute
+  '/voices': typeof VoicesRouteWithChildren
   '/workbench': typeof WorkbenchRoute
   '/library/': typeof LibraryIndexRoute
   '/new-book/': typeof NewBookIndexRoute
+  '/voices/': typeof VoicesIndexRoute
   '/library/$bookSlug/$documentId': typeof LibraryBookSlugDocumentIdRouteWithChildren
   '/library/$bookSlug/': typeof LibraryBookSlugIndexRoute
   '/library/$bookSlug/$documentId/cast': typeof LibraryBookSlugDocumentIdCastRoute
@@ -105,10 +112,10 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
-  '/voices': typeof VoicesRoute
   '/workbench': typeof WorkbenchRoute
   '/library': typeof LibraryIndexRoute
   '/new-book': typeof NewBookIndexRoute
+  '/voices': typeof VoicesIndexRoute
   '/library/$bookSlug': typeof LibraryBookSlugIndexRoute
   '/library/$bookSlug/$documentId/cast': typeof LibraryBookSlugDocumentIdCastRoute
   '/library/$bookSlug/$documentId/synthesis': typeof LibraryBookSlugDocumentIdSynthesisRoute
@@ -119,10 +126,11 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
-  '/voices': typeof VoicesRoute
+  '/voices': typeof VoicesRouteWithChildren
   '/workbench': typeof WorkbenchRoute
   '/library/': typeof LibraryIndexRoute
   '/new-book/': typeof NewBookIndexRoute
+  '/voices/': typeof VoicesIndexRoute
   '/library/$bookSlug/$documentId': typeof LibraryBookSlugDocumentIdRouteWithChildren
   '/library/$bookSlug/': typeof LibraryBookSlugIndexRoute
   '/library/$bookSlug/$documentId/cast': typeof LibraryBookSlugDocumentIdCastRoute
@@ -139,6 +147,7 @@ export interface FileRouteTypes {
     | '/workbench'
     | '/library/'
     | '/new-book/'
+    | '/voices/'
     | '/library/$bookSlug/$documentId'
     | '/library/$bookSlug/'
     | '/library/$bookSlug/$documentId/cast'
@@ -149,10 +158,10 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/about'
-    | '/voices'
     | '/workbench'
     | '/library'
     | '/new-book'
+    | '/voices'
     | '/library/$bookSlug'
     | '/library/$bookSlug/$documentId/cast'
     | '/library/$bookSlug/$documentId/synthesis'
@@ -166,6 +175,7 @@ export interface FileRouteTypes {
     | '/workbench'
     | '/library/'
     | '/new-book/'
+    | '/voices/'
     | '/library/$bookSlug/$documentId'
     | '/library/$bookSlug/'
     | '/library/$bookSlug/$documentId/cast'
@@ -177,7 +187,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AboutRoute: typeof AboutRoute
-  VoicesRoute: typeof VoicesRoute
+  VoicesRoute: typeof VoicesRouteWithChildren
   WorkbenchRoute: typeof WorkbenchRoute
   LibraryIndexRoute: typeof LibraryIndexRoute
   NewBookIndexRoute: typeof NewBookIndexRoute
@@ -214,6 +224,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/voices/': {
+      id: '/voices/'
+      path: '/'
+      fullPath: '/voices/'
+      preLoaderRoute: typeof VoicesIndexRouteImport
+      parentRoute: typeof VoicesRoute
     }
     '/new-book/': {
       id: '/new-book/'
@@ -274,6 +291,17 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface VoicesRouteChildren {
+  VoicesIndexRoute: typeof VoicesIndexRoute
+}
+
+const VoicesRouteChildren: VoicesRouteChildren = {
+  VoicesIndexRoute: VoicesIndexRoute,
+}
+
+const VoicesRouteWithChildren =
+  VoicesRoute._addFileChildren(VoicesRouteChildren)
+
 interface LibraryBookSlugDocumentIdRouteChildren {
   LibraryBookSlugDocumentIdCastRoute: typeof LibraryBookSlugDocumentIdCastRoute
   LibraryBookSlugDocumentIdSynthesisRoute: typeof LibraryBookSlugDocumentIdSynthesisRoute
@@ -298,7 +326,7 @@ const LibraryBookSlugDocumentIdRouteWithChildren =
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AboutRoute: AboutRoute,
-  VoicesRoute: VoicesRoute,
+  VoicesRoute: VoicesRouteWithChildren,
   WorkbenchRoute: WorkbenchRoute,
   LibraryIndexRoute: LibraryIndexRoute,
   NewBookIndexRoute: NewBookIndexRoute,

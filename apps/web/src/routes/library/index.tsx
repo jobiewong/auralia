@@ -4,7 +4,7 @@ import { useServerFn } from '@tanstack/react-start'
 
 import { DeleteConfirmationDialog } from '~/components/delete-confirmation-dialog'
 import { preloadBooks, useBooks } from '~/db-collections'
-import { deleteWork } from '~/db/works'
+import { deleteWork } from '~/server/works'
 import { formatDate } from '~/lib/utils'
 
 export const Route = createFileRoute('/library/')({

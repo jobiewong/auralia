@@ -19,7 +19,7 @@ import {
   useBooks,
   useDocumentSpans,
 } from '~/db-collections'
-import { deleteDocument, updateDocumentTitle } from '~/db/documents'
+import { deleteDocument, updateDocumentTitle } from '~/server/documents'
 import {
   cn,
   countReviewSpans,
