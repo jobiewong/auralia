@@ -506,7 +506,7 @@ export function preloadDocumentDiagnostics(
 }
 
 export function useDocumentDiagnostics(bookSlug: string, documentId: string) {
-  const { data: diagnostics } = useQuery({
+  const { data: diagnostics, refetch } = useQuery({
     queryKey: documentDiagnosticsKey(bookSlug, documentId),
     queryFn: () => getDocumentDiagnostics({ data: { bookSlug, documentId } }),
     staleTime: 5_000,
@@ -514,7 +514,7 @@ export function useDocumentDiagnostics(bookSlug: string, documentId: string) {
       hasActivePipelineJob(query.state.data) ? 1_000 : false,
   })
 
-  return diagnostics
+  return { diagnostics, refetch }
 }
 
 function hasActivePipelineJob(diagnostics: unknown) {

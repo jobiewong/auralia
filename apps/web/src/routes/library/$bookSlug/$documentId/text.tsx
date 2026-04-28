@@ -20,10 +20,7 @@ import {
 import type { DocumentSpan } from '~/db-collections'
 import { useDocumentDiagnostics, useDocumentSpans } from '~/db-collections'
 import { updateSpanAttribution } from '~/db/documents'
-import {
-  runCastDetection,
-  runSegmentation,
-} from '~/lib/pipeline-api'
+import { runCastDetection, runSegmentation } from '~/lib/pipeline-api'
 import {
   cn,
   countAttributed,
@@ -48,7 +45,7 @@ function RouteComponent() {
   const queryClient = useQueryClient()
   const updateAttribution = useServerFn(updateSpanAttribution)
   const spans = useDocumentSpans(bookSlug, documentId)
-  const diagnostics = useDocumentDiagnostics(bookSlug, documentId)
+  const { diagnostics } = useDocumentDiagnostics(bookSlug, documentId)
   const [activeSpanId, setActiveSpanId] = useState<string | null>(null)
   const [filter, setFilter] = useState<SpanFilter>('all')
   const [runningStage, setRunningStage] = useState<
@@ -222,13 +219,6 @@ function RouteComponent() {
             <dd>
               {formatMetric(diagnostics?.castCounts.total ?? 0, 'members')}
             </dd>
-            {/* <dt className="text-foreground/50">Cast Review</dt>
-            <dd>
-              {formatMetric(
-                diagnostics?.castCounts.needsReview ?? 0,
-                'needs review',
-              )}
-            </dd> */}
             <dt className="text-foreground/50">Attribution</dt>
             <dd>
               {formatMetric(
@@ -252,65 +242,6 @@ function RouteComponent() {
             </dd>
           </dl>
         </div>
-        {/* <div className="mt-4 flex gap-4">
-          <ConfirmationButton
-            className="w-52 text-xl"
-            disabled={isPipelineBusy}
-            isRunning={runningStage === 'segmentation'}
-            onClick={
-              hasCompletedSegmentation
-                ? undefined
-                : () => handleRunSegmentation()
-            }
-            onLongPress={() =>
-              hasCompletedSegmentation
-                ? setConfirmRerunStage('segmentation')
-                : handleRunSegmentation()
-            }
-          >
-            <Play className="size-4" />{' '}
-            {hasCompletedSegmentation ? 'Segmented' : 'Run Segmentation'}
-          </ConfirmationButton>
-          <ConfirmationButton
-            className="w-52 text-xl"
-            disabled={!canRunCastDetection}
-            isRunning={runningStage === 'cast detection'}
-            onClick={
-              hasCompletedCastDetection
-                ? undefined
-                : () => handleRunCastDetection()
-            }
-            onLongPress={() =>
-              hasCompletedCastDetection
-                ? setConfirmRerunStage('cast detection')
-                : handleRunCastDetection()
-            }
-          >
-            <Play className="size-4" />{' '}
-            {hasCompletedCastDetection ? 'Cast Detected' : 'Detect Cast'}
-          </ConfirmationButton>
-          <ConfirmationButton
-            className="w-52 text-xl"
-            disabled={!canRunAttribution}
-            isRunning={runningStage === 'attribution'}
-            onClick={
-              hasCompletedAttribution ? undefined : () => handleRunAttribution()
-            }
-            onLongPress={() =>
-              handleRunAttribution({ force: hasCompletedAttribution })
-            }
-          >
-            <Play className="size-4" />{' '}
-            {hasCompletedAttribution ? 'Attributed' : 'Run Attribution'}
-          </ConfirmationButton>
-          {activePipelineJob ? (
-            <p className="flex items-center gap-2 font-serif text-lg text-foreground/60">
-              <Clock className="size-5" />
-              {activePipelineJob.label} {activePipelineJob.status} for{' '}
-              {formatElapsed(elapsed)}
-            </p>
-          ) : null}
-        </div> */}
         {!hasCompletedSegmentation ? (
           <p className="mt-3 font-serif text-foreground/60">
             Cast detection unlocks after segmentation has completed.
@@ -437,11 +368,7 @@ function PipelineRerunDialog({
             {isRunning ? 'Running' : copy.confirmLabel}
           </Button>
           <DialogClose asChild>
-            <Button
-              variant="cancel"
-              disabled={isRunning}
-              size="lg"
-            >
+            <Button variant="cancel" disabled={isRunning} size="lg">
               Cancel
             </Button>
           </DialogClose>

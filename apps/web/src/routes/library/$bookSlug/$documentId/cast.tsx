@@ -2,11 +2,13 @@ import { useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import { useServerFn } from '@tanstack/react-start'
 import type { FormEvent } from 'react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { BracketButton } from '~/components/bracket-button'
 import { DeleteConfirmationDialog } from '~/components/delete-confirmation-dialog'
 import { Button } from '~/components/ui/button'
+import type { ComboboxOption } from '~/components/ui/combobox-custom'
+import { Combobox } from '~/components/ui/combobox-custom'
 import {
   Dialog,
   DialogClose,
@@ -47,26 +49,17 @@ const emptyCastForm: CastFormState = {
   descriptor: '',
 }
 
+const NARRATOR_SPEAKER = 'NARRATOR'
+
 function RouteComponent() {
   const { bookSlug, documentId } = Route.useParams()
   const queryClient = useQueryClient()
   const addCastCharacterFn = useServerFn(addCastCharacter)
-  const updateCastCharacterFn = useServerFn(updateCastCharacter)
-  const deleteCastCharacterFn = useServerFn(deleteCastCharacter)
-  const voiceMappingsCollection = getDocumentVoiceMappingsCollection(
-    queryClient,
-    documentId,
-  )
   const spans = useDocumentSpans(bookSlug, documentId)
-  const diagnostics = useDocumentDiagnostics(bookSlug, documentId)
+  const { diagnostics } = useDocumentDiagnostics(bookSlug, documentId)
   const roster = parseRoster(diagnostics?.document.roster)
   const speakerCounts = getSpeakerCounts(spans)
   const legacySpeakers = getLegacySpeakers(roster, speakerCounts)
-  const voices = useVoices()
-  const voiceMappings = useDocumentVoiceMappings(documentId)
-  const mappingBySpeaker = new Map(
-    voiceMappings.map((mapping) => [mapping.speaker, mapping.voiceId]),
-  )
 
   async function refreshCastData() {
     await Promise.all([
@@ -84,68 +77,11 @@ function RouteComponent() {
     ])
   }
 
-  async function assignVoice(speaker: string, voiceId: string) {
-    const existing = voiceMappings.find(
-      (mapping) => mapping.speaker === speaker,
-    )
-    let tx: { isPersisted: { promise: Promise<unknown> } }
-    if (!voiceId) {
-      if (!existing) {
-        return
-      }
-      tx = voiceMappingsCollection.delete(speaker)
-    } else if (existing) {
-      tx = voiceMappingsCollection.update(speaker, (draft) => {
-        draft.voiceId = voiceId
-        draft.updatedAt = new Date().toISOString()
-      })
-    } else {
-      const now = new Date().toISOString()
-      tx = voiceMappingsCollection.insert({
-        id: `voice_mapping_${crypto.randomUUID().replaceAll('-', '')}`,
-        documentId,
-        speaker,
-        voiceId,
-        voiceName:
-          voices.find((voice) => voice.id === voiceId)?.displayName ?? null,
-        createdAt: now,
-        updatedAt: now,
-      })
-    }
-    await tx.isPersisted.promise
-    await refreshCastData()
-  }
-
-  async function saveCastCharacter({
-    form,
-    originalName,
-  }: {
-    form: CastFormState
-    originalName: string | null
-  }) {
+  async function addCharacter(form: CastFormState) {
     const payload = getCastPayload(documentId, form)
 
-    if (originalName) {
-      await updateCastCharacterFn({
-        data: {
-          ...payload,
-          originalName,
-        },
-      })
-    } else {
-      await addCastCharacterFn({ data: payload })
-    }
+    await addCastCharacterFn({ data: payload })
 
-    await refreshCastData()
-  }
-
-  async function removeCharacter(canonicalName: string) {
-    await deleteCastCharacterFn({
-      data: {
-        documentId,
-        canonicalName,
-      },
-    })
     await refreshCastData()
   }
 
@@ -169,7 +105,7 @@ function RouteComponent() {
           <CastFormDialog
             mode="Add"
             initialForm={emptyCastForm}
-            onSave={(form) => saveCastCharacter({ form, originalName: null })}
+            onSave={addCharacter}
           />
         </div>
       </div>
@@ -202,32 +138,7 @@ function RouteComponent() {
           </p>
         </section>
       )}
-
-      <section className="mb-8 border-y py-5 font-serif">
-        <p className="mb-4 text-foreground/50">Voice assignments</p>
-        <ul className="space-y-3">
-          <VoiceAssignmentRow
-            label="Narrator"
-            voices={voices}
-            value={mappingBySpeaker.get('NARRATOR') ?? ''}
-            onChange={(voiceId) => assignVoice('NARRATOR', voiceId)}
-          />
-          {roster
-            .filter((character) => character.canonicalName !== 'UNKNOWN')
-            .map((character) => (
-              <VoiceAssignmentRow
-                key={character.canonicalName}
-                label={character.canonicalName}
-                voices={voices}
-                value={mappingBySpeaker.get(character.canonicalName) ?? ''}
-                onChange={(voiceId) =>
-                  assignVoice(character.canonicalName, voiceId)
-                }
-              />
-            ))}
-        </ul>
-      </section>
-
+      <NarratorVoiceRow documentId={documentId} />
       {legacySpeakers.length > 0 && (
         <section className="mb-8 border-y py-5 font-serif">
           <p className="mb-4 text-foreground/50">Legacy speakers</p>
@@ -252,9 +163,7 @@ function RouteComponent() {
                       aliases: '',
                       descriptor: '',
                     }}
-                    onSave={(form) =>
-                      saveCastCharacter({ form, originalName: null })
-                    }
+                    onSave={addCharacter}
                   />
                 </div>
               </li>
@@ -268,109 +177,16 @@ function RouteComponent() {
       ) : (
         <ul className="space-y-4 font-serif">
           {roster.map((character) => (
-            <li
+            <CastRow
               key={character.canonicalName}
-              className="grid gap-2 py-4 sm:grid-cols-[minmax(0,1fr)_14rem]"
-            >
-              <div>
-                <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                  <p>{character.canonicalName}</p>
-                  <p className="text-foreground/50">
-                    {formatCount(
-                      speakerCounts.get(character.canonicalName) ?? 0,
-                    )}
-                  </p>
-                </div>
-                {character.aliases.length > 0 && (
-                  <p className="text-foreground/50">
-                    {character.aliases.join(' / ')}
-                  </p>
-                )}
-                {character.descriptor && (
-                  <p className="text-foreground/50">{character.descriptor}</p>
-                )}
-              </div>
-              <div className="flex flex-col items-end gap-3 text-foreground/50">
-                <p>voice unmapped</p>
-                <div className="flex gap-2">
-                  <CastFormDialog
-                    mode="Edit"
-                    initialForm={{
-                      canonicalName: character.canonicalName,
-                      aliases: character.aliases.join(', '),
-                      descriptor: character.descriptor ?? '',
-                    }}
-                    onSave={(form) =>
-                      saveCastCharacter({
-                        form,
-                        originalName: character.canonicalName,
-                      })
-                    }
-                  />
-                  <DeleteConfirmationDialog
-                    className="h-auto p-0! opacity-50 hover:opacity-100 font-serif text-orange-950 hover:no-underline hover:bg-orange-950/10 hover:text-orange-950"
-                    title="Delete cast member"
-                    description={`Remove ${character.canonicalName} from this document's cast list? Existing span attributions will remain assigned to this speaker.`}
-                    triggerLabel="[Delete]"
-                    confirmLabel="Delete"
-                    onConfirm={() => removeCharacter(character.canonicalName)}
-                  />
-                </div>
-              </div>
-            </li>
+              character={character}
+              speakerCounts={speakerCounts}
+              documentId={documentId}
+            />
           ))}
         </ul>
       )}
     </section>
-  )
-}
-
-function VoiceAssignmentRow({
-  label,
-  voices,
-  value,
-  onChange,
-}: {
-  label: string
-  voices: Array<{ id: string; displayName: string; mode: string }>
-  value: string
-  onChange: (voiceId: string) => Promise<void>
-}) {
-  const [isSaving, setIsSaving] = useState(false)
-
-  async function handleChange(voiceId: string) {
-    setIsSaving(true)
-    try {
-      await onChange(voiceId)
-    } finally {
-      setIsSaving(false)
-    }
-  }
-
-  const selectedVoice = voices.find((voice) => voice.id === value)
-
-  return (
-    <li className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_18rem]">
-      <div>
-        <p>{label}</p>
-        <p className="text-foreground/50">
-          {selectedVoice ? selectedVoice.displayName : 'voice unmapped'}
-        </p>
-      </div>
-      <select
-        value={value}
-        disabled={isSaving}
-        onChange={(event) => handleChange(event.target.value)}
-        className="border-b bg-transparent px-1 py-1"
-      >
-        <option value="">Unmapped</option>
-        {voices.map((voice) => (
-          <option key={voice.id} value={voice.id}>
-            {voice.displayName}
-          </option>
-        ))}
-      </select>
-    </li>
   )
 }
 
@@ -474,6 +290,240 @@ function CastFormDialog({
   )
 }
 
+interface CastCharacter {
+  canonicalName: string
+  aliases: string[]
+  descriptor: string | null
+}
+
+function CastRow({
+  character,
+  speakerCounts,
+  documentId,
+}: {
+  character: CastCharacter
+  speakerCounts: Map<string, number>
+  documentId: string
+}) {
+  const { bookSlug } = Route.useParams()
+  const updateCastCharacterFn = useServerFn(updateCastCharacter)
+  const deleteCastCharacterFn = useServerFn(deleteCastCharacter)
+  const { assignVoice, refreshCastData, voiceMapping, voiceOptions } =
+    useVoiceAssignment({
+      bookSlug,
+      documentId,
+      speaker: character.canonicalName,
+    })
+
+  async function saveCastCharacter(form: CastFormState) {
+    await updateCastCharacterFn({
+      data: {
+        ...getCastPayload(documentId, form),
+        originalName: character.canonicalName,
+      },
+    })
+    await refreshCastData()
+  }
+
+  async function removeCharacter(canonicalName: string) {
+    await deleteCastCharacterFn({
+      data: {
+        documentId,
+        canonicalName,
+      },
+    })
+    await refreshCastData()
+  }
+  return (
+    <li className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_14rem]">
+      <div>
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <p>{character.canonicalName}</p>
+          <p className="text-foreground/50">
+            {formatCount(speakerCounts.get(character.canonicalName) ?? 0)}
+          </p>
+        </div>
+        {character.aliases.length > 0 && (
+          <p className="text-foreground/50">{character.aliases.join(' / ')}</p>
+        )}
+        {character.descriptor && (
+          <p className="text-foreground/50">{character.descriptor}</p>
+        )}
+      </div>
+      <div className="flex flex-col items-end gap-3 text-foreground/50">
+        <CastVoiceEditor
+          voiceId={voiceMapping?.voiceId ?? ''}
+          voiceOptions={voiceOptions}
+          onSave={assignVoice}
+        />
+        <div className="flex gap-2">
+          <CastFormDialog
+            mode="Edit"
+            initialForm={{
+              canonicalName: character.canonicalName,
+              aliases: character.aliases.join(', '),
+              descriptor: character.descriptor ?? '',
+            }}
+            onSave={saveCastCharacter}
+          />
+          <DeleteConfirmationDialog
+            className="h-auto p-0! opacity-50 hover:opacity-100 font-serif text-orange-950 hover:no-underline hover:bg-orange-950/10 hover:text-orange-950"
+            title="Delete cast member"
+            description={`Remove ${character.canonicalName} from this document's cast list? Existing span attributions will remain assigned to this speaker.`}
+            triggerLabel="[Delete]"
+            confirmLabel="Delete"
+            onConfirm={() => removeCharacter(character.canonicalName)}
+          />
+        </div>
+      </div>
+    </li>
+  )
+}
+
+function NarratorVoiceRow({ documentId }: { documentId: string }) {
+  const { bookSlug } = Route.useParams()
+  const { assignVoice, selectedVoice, voiceMapping, voiceOptions } =
+    useVoiceAssignment({
+      bookSlug,
+      documentId,
+      speaker: NARRATOR_SPEAKER,
+    })
+
+  return (
+    <section className="mb-8 border-b py-5 font-serif">
+      <div className="flex items-center justify-between">
+        <p>Narrator</p>
+        <div className="flex justify-end text-foreground/50">
+          <CastVoiceEditor
+            voiceId={voiceMapping?.voiceId ?? ''}
+            voiceOptions={voiceOptions}
+            onSave={assignVoice}
+          />
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function useVoiceAssignment({
+  bookSlug,
+  documentId,
+  speaker,
+}: {
+  bookSlug: string
+  documentId: string
+  speaker: string
+}) {
+  const queryClient = useQueryClient()
+  const voiceMappingsCollection = getDocumentVoiceMappingsCollection(
+    queryClient,
+    documentId,
+  )
+  const voices = useVoices()
+  const voiceMappings = useDocumentVoiceMappings(documentId)
+  const voiceMapping = voiceMappings.find(
+    (mapping) => mapping.speaker === speaker,
+  )
+  const voiceOptions = getVoiceOptions(voices)
+  const selectedVoice = voices.find(
+    (voice) => voice.id === voiceMapping?.voiceId,
+  )
+
+  async function refreshCastData() {
+    await Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: ['document-diagnostics', bookSlug, documentId],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ['document-spans', bookSlug, documentId],
+      }),
+      queryClient.invalidateQueries({ queryKey: ['book-documents', bookSlug] }),
+      queryClient.invalidateQueries({ queryKey: ['books'] }),
+      queryClient.invalidateQueries({
+        queryKey: ['document-voice-mappings', documentId],
+      }),
+    ])
+  }
+
+  async function assignVoice(voiceId: string) {
+    let tx: { isPersisted: { promise: Promise<unknown> } }
+    if (!voiceId) {
+      if (!voiceMapping) {
+        return
+      }
+      tx = voiceMappingsCollection.delete(speaker)
+    } else if (voiceMapping) {
+      tx = voiceMappingsCollection.update(speaker, (draft) => {
+        draft.voiceId = voiceId
+        draft.updatedAt = new Date().toISOString()
+      })
+    } else {
+      const now = new Date().toISOString()
+      tx = voiceMappingsCollection.insert({
+        id: `voice_mapping_${crypto.randomUUID().replaceAll('-', '')}`,
+        documentId,
+        speaker,
+        voiceId,
+        voiceName:
+          voices.find((voice) => voice.id === voiceId)?.displayName ?? null,
+        createdAt: now,
+        updatedAt: now,
+      })
+    }
+    await tx.isPersisted.promise
+    await refreshCastData()
+  }
+
+  return {
+    assignVoice,
+    refreshCastData,
+    selectedVoice,
+    voiceMapping,
+    voiceOptions,
+  }
+}
+
+function CastVoiceEditor({
+  voiceId,
+  voiceOptions,
+  onSave,
+}: {
+  voiceId: string
+  voiceOptions: ComboboxOption[]
+  onSave: (voiceId: string) => Promise<void>
+}) {
+  const [selectedVoiceId, setSelectedVoiceId] = useState(voiceId)
+  const [isSaving, setIsSaving] = useState(false)
+
+  useEffect(() => {
+    setSelectedVoiceId(voiceId)
+  }, [voiceId])
+
+  async function save() {
+    setIsSaving(true)
+    try {
+      await onSave(selectedVoiceId)
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  return (
+    <div className="flex items-center justify-end gap-x-3 gap-y-2 text-foreground">
+      <span>voice:</span>
+      <Combobox
+        value={selectedVoiceId}
+        options={voiceOptions}
+        searchPlaceholder="Search voices"
+        onValueChange={setSelectedVoiceId}
+      />
+      <BracketButton disabled={isSaving} onClick={save}>
+        Save
+      </BracketButton>
+    </div>
+  )
+}
+
 function getCastPayload(documentId: string, form: CastFormState) {
   return {
     documentId,
@@ -494,6 +544,16 @@ function getLegacySpeakers(
     .filter((speaker) => speaker !== 'UNKNOWN')
     .filter((speaker) => !rosterNames.has(speaker.toLowerCase()))
     .sort((a, b) => a.localeCompare(b))
+}
+
+function getVoiceOptions(voices: Array<{ id: string; displayName: string }>) {
+  return [
+    { value: '', label: 'Unmapped' },
+    ...voices.map((voice) => ({
+      value: voice.id,
+      label: voice.displayName,
+    })),
+  ]
 }
 
 function parseAliases(value: string) {

@@ -44,6 +44,8 @@ from auralia_api.segmentation.service import (
 )
 from auralia_api.voices.qwen_tts import VoicePreviewUnavailableError
 from auralia_api.voices.schemas import (
+    VoiceGenerateRequest,
+    VoiceGenerateResponse,
     VoiceListResponse,
     VoiceMappingListResponse,
     VoiceMappingUpsertRequest,
@@ -56,7 +58,9 @@ from auralia_api.voices.service import (
     create_preview,
     create_voice,
     delete_voice,
+    generate_workbench_audio,
     get_preview_file,
+    get_workbench_file,
     update_voice,
     validate_voice,
 )
@@ -227,6 +231,42 @@ def get_voice_preview_file_endpoint(voice_id: str, filename: str) -> FileRespons
     settings = get_settings()
     try:
         path = get_preview_file(
+            voice_root=settings.voice_storage_path,
+            voice_id=voice_id,
+            filename=filename,
+        )
+    except VoiceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return FileResponse(path, media_type="audio/wav")
+
+
+@app.post("/api/voices/{voice_id}/workbench", response_model=VoiceGenerateResponse)
+def generate_voice_workbench_endpoint(
+    voice_id: str, request: VoiceGenerateRequest
+) -> VoiceGenerateResponse:
+    settings = get_settings()
+    try:
+        return VoiceGenerateResponse.model_validate(
+            generate_workbench_audio(
+                sqlite_path=settings.sqlite_path,
+                voice_root=settings.voice_storage_path,
+                voice_id=voice_id,
+                text=request.text,
+            )
+        )
+    except VoiceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except VoiceValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.args[0]) from exc
+    except VoicePreviewUnavailableError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.get("/api/voices/{voice_id}/workbench-file/{filename}")
+def get_voice_workbench_file_endpoint(voice_id: str, filename: str) -> FileResponse:
+    settings = get_settings()
+    try:
+        path = get_workbench_file(
             voice_root=settings.voice_storage_path,
             voice_id=voice_id,
             filename=filename,

@@ -1,14 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 
-import {
-  useDocumentDiagnostics,
-  useDocumentSpans,
-} from '~/db-collections'
-import {
-  countNeedsReview,
-  formatMetric,
-  formatSpanCount,
-} from '~/lib/utils'
+import { useDocumentDiagnostics, useDocumentSpans } from '~/db-collections'
+import { countNeedsReview, formatMetric, formatSpanCount } from '~/lib/utils'
 
 export const Route = createFileRoute(
   '/library/$bookSlug/$documentId/synthesis',
@@ -19,7 +12,7 @@ export const Route = createFileRoute(
 function RouteComponent() {
   const { bookSlug, documentId } = Route.useParams()
   const spans = useDocumentSpans(bookSlug, documentId)
-  const diagnostics = useDocumentDiagnostics(bookSlug, documentId)
+  const { diagnostics } = useDocumentDiagnostics(bookSlug, documentId)
   const needsReview =
     diagnostics?.attributionCounts.needsReview ?? countNeedsReview(spans)
 

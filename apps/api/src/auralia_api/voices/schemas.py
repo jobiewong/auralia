@@ -47,6 +47,17 @@ class VoicePreviewResponse(BaseModel):
     audio_url: str
 
 
+class VoiceGenerateRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=5000)
+
+
+class VoiceGenerateResponse(BaseModel):
+    voice_id: str
+    text: str
+    audio_path: str
+    audio_url: str
+
+
 class VoiceMapping(BaseModel):
     id: str
     document_id: str

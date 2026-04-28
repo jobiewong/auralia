@@ -17,3 +17,9 @@ export interface SpansPayload {
   text: string;
   spans: Span[];
 }
+
+export interface CastCharacter {
+  canonicalName: string;
+  aliases: string[];
+  descriptor: string;
+}

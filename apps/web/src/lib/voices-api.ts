@@ -99,6 +99,15 @@ export async function createVoicePreview(voiceId: string) {
   }>(`/api/voices/${voiceId}/preview`, {})
 }
 
+export async function generateVoiceAudio(voiceId: string, text: string) {
+  return postJson<{
+    voice_id: string
+    text: string
+    audio_path: string
+    audio_url: string
+  }>(`/api/voices/${voiceId}/workbench`, { text })
+}
+
 export async function fetchDocumentVoiceMappings(documentId: string) {
   const body = await getJson<{ mappings: ApiVoiceMapping[] }>(
     `/api/documents/${documentId}/voice-mappings`,

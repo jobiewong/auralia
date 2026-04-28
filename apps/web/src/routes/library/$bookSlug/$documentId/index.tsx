@@ -48,7 +48,7 @@ function RouteComponent() {
   const { bookSlug, documentId } = Route.useParams()
   const queryClient = useQueryClient()
   const spans = useDocumentSpans(bookSlug, documentId)
-  const diagnostics = useDocumentDiagnostics(bookSlug, documentId)
+  const { diagnostics } = useDocumentDiagnostics(bookSlug, documentId)
   const reviewCount = countReviewSpans(spans)
   const [runningStage, setRunningStage] = useState<
     'segmentation' | 'cast detection' | 'attribution' | null
@@ -376,11 +376,7 @@ function PipelineRerunDialog({
             {isRunning ? 'Running' : copy.confirmLabel}
           </Button>
           <DialogClose asChild>
-            <Button
-              variant="cancel"
-              disabled={isRunning}
-              size="lg"
-            >
+            <Button variant="cancel" disabled={isRunning} size="lg">
               Cancel
             </Button>
           </DialogClose>
@@ -591,7 +587,7 @@ function isActiveJobStatus(status: string) {
 }
 
 function getActivePipelineJob(
-  diagnostics: ReturnType<typeof useDocumentDiagnostics>,
+  diagnostics: ReturnType<typeof useDocumentDiagnostics>['diagnostics'],
 ) {
   const jobs = [
     diagnostics?.latestIngestionJob,

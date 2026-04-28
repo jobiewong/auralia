@@ -270,6 +270,32 @@ def create_preview(*, sqlite_path: str, voice_root: str, voice_id: str) -> dict:
     }
 
 
+def generate_workbench_audio(
+    *, sqlite_path: str, voice_root: str, voice_id: str, text: str
+) -> dict:
+    voice = storage.get_voice_by_id(sqlite_path=sqlite_path, voice_id=voice_id)
+    report = validate_voice_profile(voice=voice, voice_root=voice_root)
+    if report["errors"]:
+        raise VoiceValidationError(report)
+    clean_text = text.strip()
+    if not clean_text:
+        raise VoiceValidationError(
+            {"errors": [_issue("missing_text", "text", "text is required")]}
+        )
+    workbench_dir = _voice_dir(voice_root, voice_id) / "workbench"
+    workbench_dir.mkdir(parents=True, exist_ok=True)
+    output_path = workbench_dir / f"workbench_{uuid4().hex}.wav"
+    generate_qwen_preview(voice=voice, text=clean_text, output_path=output_path)
+    audio_path = _relative_to_root(output_path, voice_root)
+    output_name = Path(audio_path).name
+    return {
+        "voice_id": voice_id,
+        "text": clean_text,
+        "audio_path": audio_path,
+        "audio_url": f"/api/voices/{voice_id}/workbench-file/{output_name}",
+    }
+
+
 def _generate_preview(*, voice: dict, voice_root: str) -> dict:
     sentence = random.choice(PREVIEW_SENTENCES)
     previews_dir = _voice_dir(voice_root, voice["id"]) / "previews"
@@ -287,6 +313,14 @@ def get_preview_file(*, voice_root: str, voice_id: str, filename: str) -> Path:
     _assert_inside_root(path, voice_root)
     if not path.exists():
         raise storage.VoiceNotFoundError(f"preview not found: {filename}")
+    return path
+
+
+def get_workbench_file(*, voice_root: str, voice_id: str, filename: str) -> Path:
+    path = _voice_dir(voice_root, voice_id) / "workbench" / filename
+    _assert_inside_root(path, voice_root)
+    if not path.exists():
+        raise storage.VoiceNotFoundError(f"workbench audio not found: {filename}")
     return path
 
 
