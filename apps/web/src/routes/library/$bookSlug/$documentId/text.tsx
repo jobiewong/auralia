@@ -7,8 +7,6 @@ import { useMemo, useState } from 'react'
 import { BracketButton } from '~/components/bracket-button'
 import type { DocumentSpan } from '~/db-collections'
 import { useDocumentDiagnostics, useDocumentSpans } from '~/db-collections'
-import { updateSpanAttribution } from '~/server/documents'
-import { runCastDetection, runSegmentation } from '~/server/pipeline-api'
 import {
   countAttributed,
   countByType,
@@ -19,6 +17,8 @@ import {
   formatSpanCount,
   parseRoster,
 } from '~/lib/utils'
+import { updateSpanAttribution } from '~/server/documents'
+import { runCastDetection, runSegmentation } from '~/server/pipeline-api'
 import { PipelineRerunDialog } from './-components/pipeline-rerun-dialog'
 import { Span } from './-components/span'
 
@@ -169,7 +169,7 @@ function RouteComponent() {
 
   function handleActivateSpan(span: DocumentSpan) {
     setActiveSpanId((currentSpanId) =>
-      currentSpanId === span.id && !isReviewSpan(span) ? null : span.id,
+      currentSpanId === span.id ? null : span.id,
     )
   }
 

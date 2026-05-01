@@ -75,6 +75,22 @@ class Settings(BaseSettings):
         default="data/voices",
         description="Directory for imported voice assets and generated previews.",
     )
+    output_storage_path: str = Field(
+        default="data/outputs",
+        description="Directory for generated synthesis outputs.",
+    )
+    synthesis_span_pause_ms: int = Field(
+        default=400,
+        ge=0,
+        le=10_000,
+        description="Silence inserted between synthesized span clips.",
+    )
+    synthesis_chunk_pause_ms: int = Field(
+        default=325,
+        ge=0,
+        le=10_000,
+        description="Silence inserted between sub-clips inside a long span.",
+    )
     qwen_tts_python: str | None = Field(
         default=None,
         description="Python executable for the isolated local Qwen3-TTS environment.",

@@ -339,19 +339,22 @@ Build a fully local, character-aware audiobook pipeline that converts prose into
 
 **Objective:** Produce final audiobook outputs from validated, reviewed spans.
 
-**Status:** ⬜ Not started
+**Status:** 🟨 In progress — backend synthesis implemented; frontend production UI remains to be designed.
 
 **Tasks**
-- [ ] Implement synthesis job planner from `synthesis_manifest`
-- [ ] Map narration/dialogue to correct voices
-- [ ] Generate per-span audio with stable file naming through local Qwen3-TTS
-- [ ] Implement idempotent caching (hash-based)
-- [ ] Concatenate audio in span order via FFmpeg
-- [ ] Support single-file and chapter-split export
-- [ ] Add post-export artifact manifest
+- [x] Implement synthesis job planner from reviewed spans + voice mappings
+- [x] Map narration/dialogue to correct voices (`NARRATOR` for narration, attributed speaker for dialogue)
+- [x] Generate per-span audio with stable file naming through local Qwen3-TTS
+- [x] Chunk spans longer than 3 sentences into sub-clips, then merge them back into one span clip
+- [x] Implement idempotent caching (hash-based)
+- [x] Concatenate audio in span order via FFmpeg
+- [x] Support single-file WAV export
+- [x] Add post-export artifact manifest
+- [ ] Build final synthesis UI layout and controls
 
 **Definition of Done**
-- End-to-end run produces playable output and manifest.
+- End-to-end backend run produces playable output and manifest.
+- Product UI exposes synthesis readiness, blockers, progress, output playback, and regeneration controls.
 
 ---
 
@@ -453,6 +456,18 @@ At end of each session, update:
   - `npm run db:migrate`
   - `npm --workspace @auralia/web run typecheck`
 
+- **M7 backend synthesis session:**
+  - [x] Added `docs/plans/M7_SYNTHESIS.md` as the backend/UI implementation plan.
+  - [x] Added `auralia_api.synthesis` service/storage/audio modules.
+  - [x] Added `POST /api/synthesize`, `GET /api/synthesis/{job_id}/output`, and `GET /api/synthesis/{job_id}/manifest`.
+  - [x] Implemented synthesis gates for reviewed attribution, `UNKNOWN` speakers, narrator mapping, used dialogue speaker mappings, valid voices, and unsupported plain `clone` mode.
+  - [x] Implemented per-span Qwen generation, max-3-sentence internal chunking, chunk merge, span cache keys, FFmpeg final assembly, and JSON manifests.
+  - [x] Extended synthesis job/segment schema with manifest, stats, error report, cache key, text hash, chunk count, and duration metadata.
+  - [x] Added frontend API helpers and diagnostics fields for synthesis status/output metadata.
+  - [x] Added synthesis tests with fake Qwen audio generation.
+  - [x] Verified: `.venv/bin/pytest tests/synthesis -q`, `.venv/bin/ruff check apps/api/src tests`, `.venv/bin/mypy apps/api/src/auralia_api`.
+  - [ ] Blocked in this shell: `npm --workspace @auralia/web run typecheck` because Linux `node` is unavailable and the Windows/bundled Node executables fail under the sandbox.
+
 ---
 
 ## Progress Snapshot
@@ -465,5 +480,5 @@ At end of each session, update:
 - M4 Attribution + Review Flags: ⏸ (accepted for runtime use; benchmarking deferred)
 - M5 Voice Registry API + Voice Management: ⬜
 - M6 React Review + Speaker Corrections: ⬜
-- M7 Synthesis + Assembly: ⬜
+- M7 Synthesis + Assembly: 🟨 (backend implemented; final UI pending)
 - M8 Quality + Hardening: ⬜

@@ -24,9 +24,18 @@ def generate_qwen_preview(
     text: str,
     output_path: Path,
 ) -> None:
+    generate_qwen_audio(voice=voice, text=text, output_path=output_path)
+
+
+def generate_qwen_audio(
+    *,
+    voice: dict[str, Any],
+    text: str,
+    output_path: Path,
+) -> None:
     if voice["mode"] not in {"designed", "hifi_clone"}:
         raise VoicePreviewUnavailableError(
-            f"Qwen preview is not implemented for {voice['mode']} voices yet"
+            f"Qwen generation is not implemented for {voice['mode']} voices yet"
         )
 
     settings = get_settings()
@@ -56,7 +65,7 @@ def generate_qwen_preview(
         prompt_audio_path = voice.get("prompt_audio_path")
         if not prompt_audio_path:
             raise VoicePreviewUnavailableError(
-                "hifi_clone preview requires prompt audio"
+                "hifi_clone generation requires prompt audio"
             )
         payload.update(
             {
@@ -87,7 +96,7 @@ def generate_qwen_preview(
         "auralia_api.voices.qwen_tts_cli",
     ]
     logger.info(
-        "Starting Qwen TTS preview voice_id=%s model=%s device=%s output=%s",
+        "Starting Qwen TTS generation voice_id=%s model=%s device=%s output=%s",
         voice["id"],
         payload["model"],
         settings.qwen_tts_device,
@@ -104,12 +113,14 @@ def generate_qwen_preview(
         detail = _tail(str(result["stderr"]))
         raise VoicePreviewUnavailableError(
             detail
-            or f"Qwen preview generation failed with exit code {result['returncode']}. "
+            or f"Qwen generation failed with exit code {result['returncode']}. "
             "See the FastAPI terminal for Qwen subprocess logs."
         )
 
     if not output_path.exists() or output_path.stat().st_size == 0:
-        raise VoicePreviewUnavailableError("Qwen preview did not produce audio output")
+        raise VoicePreviewUnavailableError(
+            "Qwen generation did not produce audio output"
+        )
 
     _parse_json_status(str(result["stdout"]))
 

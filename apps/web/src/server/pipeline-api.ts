@@ -40,6 +40,15 @@ export async function runAttribution(
   }>(withForce('/api/attribute', options?.force), { document_id: documentId })
 }
 
+export async function runSynthesis(
+  documentId: string,
+  options?: { force?: boolean },
+) {
+  return postJson<{
+    synthesis_job: { id: string; document_id: string; status: string }
+  }>(withForce('/api/synthesize', options?.force), { document_id: documentId })
+}
+
 function withForce(path: string, force = false) {
   return force ? `${path}?force=true` : path
 }

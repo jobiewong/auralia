@@ -92,6 +92,13 @@
       "when": 1777300000000,
       "tag": "0012_voices_preview_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1777400000000,
+      "tag": "0013_m7_synthesis_diagnostics",
+      "breakpoints": true
     }
   ]
 }

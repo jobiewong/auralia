@@ -15,6 +15,10 @@ export const DocumentSpanSchema = z.object({
   speaker: z.string().nullable(),
   speakerConfidence: z.number().nullable(),
   needsReview: z.boolean().nullable(),
+  synthesisStatus: z.enum(['pending', 'processing', 'completed']),
+  synthesisAudioUrl: z.string().nullable(),
+  synthesisDurationMs: z.number().nullable(),
+  synthesisChunkCount: z.number().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
 })
@@ -42,10 +46,12 @@ function createDocumentSpansCollection(
   return createCollection(
     queryCollectionOptions({
       queryKey: documentSpansKey(bookSlug, documentId),
-      queryFn: () => listDocumentSpans({ data: { bookSlug, documentId } }),
+      queryFn: async () =>
+        DocumentSpanSchema.array().parse(
+          await listDocumentSpans({ data: { bookSlug, documentId } }),
+        ),
       queryClient,
       getKey: (span) => span.id,
-      schema: DocumentSpanSchema,
       staleTime: 5_000,
     }),
   )

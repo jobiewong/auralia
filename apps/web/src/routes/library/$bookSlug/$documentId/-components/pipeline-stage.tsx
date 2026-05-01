@@ -1,35 +1,14 @@
 import { motion } from 'motion/react'
 import type { ReactNode } from 'react'
-import { ProgressArc } from '~/components/ui/progress-arc'
+import { JobTimer } from '~/components/job-timer'
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from '~/components/ui/tooltip'
-import {
-  formatElapsed,
-  useElapsedSecondsFromTimestamp,
-} from '~/hooks/use-elapsed-seconds'
+
 import { cn } from '~/lib/utils'
 import { JobSummary } from './job-summary'
-
-export function JobTimer({
-  job,
-}: {
-  job: {
-    status: string
-    createdAt: string
-  }
-}) {
-  const elapsed = useElapsedSecondsFromTimestamp(job.createdAt)
-
-  return (
-    <p className="flex items-center gap-2 font-serif text-lg text-foreground/60">
-      <ProgressArc className="size-5" />
-      {job.status} for {formatElapsed(elapsed)}
-    </p>
-  )
-}
 
 export function PipelineStage({
   label,

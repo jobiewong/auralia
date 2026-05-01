@@ -1,6 +1,14 @@
 from __future__ import annotations
 
-from fastapi import FastAPI, HTTPException, Query, Request, UploadFile, status
+from fastapi import (
+    BackgroundTasks,
+    FastAPI,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+    status,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
@@ -42,6 +50,21 @@ from auralia_api.segmentation.service import (
     SegmentationValidationError,
     segment_document,
 )
+from auralia_api.synthesis.schemas import SynthesisRequest, SynthesisResponse
+from auralia_api.synthesis.service import (
+    AlreadySynthesizedError,
+    SynthesisOutputNotReadyError,
+    SynthesisValidationError,
+    create_synthesis_job,
+    get_manifest_file,
+    get_output_file,
+    get_segment_audio_file,
+    run_synthesis_job,
+)
+from auralia_api.synthesis.service import (
+    DocumentNotFoundError as SynthesisDocumentNotFoundError,
+)
+from auralia_api.synthesis.storage import SynthesisNotFoundError
 from auralia_api.voices.qwen_tts import VoicePreviewUnavailableError
 from auralia_api.voices.schemas import (
     VoiceGenerateRequest,
@@ -321,6 +344,102 @@ def clear_document_voice_mapping_endpoint(
         document_id=document_id,
         speaker=speaker,
     )
+
+
+@app.post(
+    "/api/synthesize",
+    response_model=SynthesisResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def synthesize_endpoint(
+    req: SynthesisRequest,
+    background_tasks: BackgroundTasks,
+    force: bool = Query(
+        False,
+        description=(
+            "If true, delete prior synthesis rows and outputs for this document."
+        ),
+    ),
+) -> SynthesisResponse:
+    settings = get_settings()
+    try:
+        result = create_synthesis_job(
+            document_id=req.document_id,
+            sqlite_path=settings.sqlite_path,
+            output_root=settings.output_storage_path,
+            voice_root=settings.voice_storage_path,
+            force=force,
+        )
+    except SynthesisDocumentNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except AlreadySynthesizedError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except SynthesisValidationError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": "synthesis prerequisites failed",
+                "report": exc.report,
+            },
+        ) from exc
+
+    background_tasks.add_task(
+        run_synthesis_job,
+        job_id=result["synthesis_job"]["id"],
+        sqlite_path=settings.sqlite_path,
+        output_root=settings.output_storage_path,
+        voice_root=settings.voice_storage_path,
+    )
+    return SynthesisResponse.model_validate(result)
+
+
+@app.get("/api/synthesis/{job_id}/output")
+def get_synthesis_output_endpoint(job_id: str) -> FileResponse:
+    settings = get_settings()
+    try:
+        path = get_output_file(
+            sqlite_path=settings.sqlite_path,
+            output_root=settings.output_storage_path,
+            job_id=job_id,
+        )
+    except SynthesisOutputNotReadyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except SynthesisNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return FileResponse(path, media_type="audio/wav")
+
+
+@app.get("/api/synthesis/{job_id}/manifest")
+def get_synthesis_manifest_endpoint(job_id: str) -> FileResponse:
+    settings = get_settings()
+    try:
+        path = get_manifest_file(
+            sqlite_path=settings.sqlite_path,
+            output_root=settings.output_storage_path,
+            job_id=job_id,
+        )
+    except SynthesisOutputNotReadyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except SynthesisNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return FileResponse(path, media_type="application/json")
+
+
+@app.get("/api/synthesis/{job_id}/segments/{span_id}/audio")
+def get_synthesis_segment_audio_endpoint(
+    job_id: str, span_id: str
+) -> FileResponse:
+    settings = get_settings()
+    try:
+        path = get_segment_audio_file(
+            sqlite_path=settings.sqlite_path,
+            output_root=settings.output_storage_path,
+            job_id=job_id,
+            span_id=span_id,
+        )
+    except SynthesisNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return FileResponse(path, media_type="audio/wav")
 
 
 async def _read_form(request: Request) -> dict[str, str | UploadFile]:

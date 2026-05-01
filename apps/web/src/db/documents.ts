@@ -87,13 +87,40 @@ export async function listWorkDocumentsQuery(data: z.infer<typeof ListWorkDocume
 export async function listDocumentSpansQuery(data: z.infer<typeof ListDocumentSpansInput>) {
   const [
     { db },
-    { attributions, documents, spans, works },
-    { asc, and, eq },
+    { attributions, documents, spans, synthesisJobs, synthesisSegments, works },
+    { asc, and, desc, eq },
   ] = await Promise.all([
     import('./index.ts'),
     import('./schema.ts'),
     import('drizzle-orm'),
   ])
+
+  const latestSynthesisJob = db
+    .select({
+      id: synthesisJobs.id,
+      status: synthesisJobs.status,
+      stats: synthesisJobs.stats,
+    })
+    .from(synthesisJobs)
+    .where(eq(synthesisJobs.documentId, data.documentId))
+    .orderBy(desc(synthesisJobs.updatedAt))
+    .get()
+  const synthesisSegmentRows = latestSynthesisJob
+    ? db
+        .select({
+          spanId: synthesisSegments.spanId,
+          durationMs: synthesisSegments.durationMs,
+          chunkCount: synthesisSegments.chunkCount,
+        })
+        .from(synthesisSegments)
+        .where(eq(synthesisSegments.jobId, latestSynthesisJob.id))
+        .all()
+    : []
+  const synthesisSegmentsBySpanId = new Map(
+    synthesisSegmentRows.map((segment) => [segment.spanId, segment]),
+  )
+  const synthesisStats = parseJsonRecord(latestSynthesisJob?.stats)
+  const currentSpanId = stringValue(synthesisStats?.current_span_id)
 
   return db
     .select({
@@ -118,6 +145,25 @@ export async function listDocumentSpansQuery(data: z.infer<typeof ListDocumentSp
     )
     .orderBy(asc(spans.start), asc(spans.end))
     .all()
+    .map((span) => {
+      const synthesisSegment = synthesisSegmentsBySpanId.get(span.id)
+      const isCurrent =
+        latestSynthesisJob?.status === 'running' && currentSpanId === span.id
+      const synthesisStatus = synthesisSegment
+        ? 'completed'
+        : isCurrent
+          ? 'processing'
+          : 'pending'
+      return {
+        ...span,
+        synthesisStatus,
+        synthesisAudioUrl: synthesisSegment
+          ? `/api/synthesis/${latestSynthesisJob?.id}/segments/${span.id}/audio`
+          : null,
+        synthesisDurationMs: synthesisSegment?.durationMs ?? null,
+        synthesisChunkCount: synthesisSegment?.chunkCount ?? null,
+      }
+    })
 }
 
 export async function getDocumentRouteTargetQuery(data: z.infer<typeof GetDocumentRouteTargetInput>) {
@@ -157,6 +203,7 @@ export async function getDocumentDiagnosticsQuery(data: z.infer<typeof ListDocum
       segmentationJobs,
       spans,
       synthesisJobs,
+      synthesisSegments,
       works,
     },
     { and, desc, eq },
@@ -277,11 +324,14 @@ export async function getDocumentDiagnosticsQuery(data: z.infer<typeof ListDocum
     .where(eq(castDetectionJobs.documentId, data.documentId))
     .orderBy(desc(castDetectionJobs.updatedAt))
     .get()
-  const latestSynthesisJob = db
+  const latestSynthesisJobRaw = db
     .select({
       id: synthesisJobs.id,
       status: synthesisJobs.status,
       outputPath: synthesisJobs.outputPath,
+      manifestPath: synthesisJobs.manifestPath,
+      stats: synthesisJobs.stats,
+      errorReport: synthesisJobs.errorReport,
       completedAt: synthesisJobs.completedAt,
       createdAt: synthesisJobs.createdAt,
       updatedAt: synthesisJobs.updatedAt,
@@ -290,6 +340,36 @@ export async function getDocumentDiagnosticsQuery(data: z.infer<typeof ListDocum
     .where(eq(synthesisJobs.documentId, data.documentId))
     .orderBy(desc(synthesisJobs.updatedAt))
     .get()
+  const synthesisSegmentRows = latestSynthesisJobRaw
+    ? db
+        .select({
+          spanId: synthesisSegments.spanId,
+          start: synthesisSegments.start,
+          updatedAt: synthesisSegments.updatedAt,
+        })
+        .from(synthesisSegments)
+        .where(eq(synthesisSegments.jobId, latestSynthesisJobRaw.id))
+        .orderBy(desc(synthesisSegments.start), desc(synthesisSegments.updatedAt))
+        .all()
+    : []
+  const synthesisStats = parseJsonRecord(latestSynthesisJobRaw?.stats)
+  const currentSpanId = stringValue(synthesisStats?.current_span_id)
+  const latestCompletedSpanId =
+    synthesisSegmentRows[0]?.spanId ??
+    stringValue(synthesisStats?.latest_completed_span_id)
+  const completedSynthesisSpans = synthesisSegmentRows.length
+  const totalSynthesisSpans = spanRows.length
+  const latestSynthesisJob = latestSynthesisJobRaw
+    ? {
+        ...latestSynthesisJobRaw,
+        outputUrl: latestSynthesisJobRaw.outputPath
+          ? `/api/synthesis/${latestSynthesisJobRaw.id}/output`
+          : null,
+        manifestUrl: latestSynthesisJobRaw.manifestPath
+          ? `/api/synthesis/${latestSynthesisJobRaw.id}/manifest`
+          : null,
+      }
+    : null
 
   const dialogueCount = spanRows.filter(
     (span) => span.type === 'dialogue',
@@ -346,6 +426,17 @@ export async function getDocumentDiagnosticsQuery(data: z.infer<typeof ListDocum
       manuallyEdited: activeCastRows.filter(
         (character) => character.manuallyEdited,
       ).length,
+    },
+    synthesisCounts: {
+      totalSpans: totalSynthesisSpans,
+      completedSpans: completedSynthesisSpans,
+      pendingSpans: Math.max(totalSynthesisSpans - completedSynthesisSpans, 0),
+      currentSpanId,
+      latestCompletedSpanId,
+      progressPercent:
+        totalSynthesisSpans === 0
+          ? 0
+          : Math.round((completedSynthesisSpans / totalSynthesisSpans) * 100),
     },
     latestIngestionJob: latestIngestionJob ?? null,
     latestSegmentationJob: latestSegmentationJob ?? null,
@@ -994,6 +1085,24 @@ function parseAliasesJson(value: string) {
   } catch {
     return []
   }
+}
+
+function parseJsonRecord(value: string | null | undefined) {
+  if (!value) {
+    return null
+  }
+  try {
+    const parsed = JSON.parse(value) as unknown
+    return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null
+  } catch {
+    return null
+  }
+}
+
+function stringValue(value: unknown) {
+  return typeof value === 'string' ? value : null
 }
 
 function normalizeRosterCharacter(character: RosterCharacter) {

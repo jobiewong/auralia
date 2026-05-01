@@ -5,15 +5,13 @@ import { Play } from '~/components/icons/play'
 
 import { Button } from '~/components/ui/button'
 import { useDocumentDiagnostics, useDocumentSpans } from '~/db-collections'
+import { countReviewSpans, formatMetric } from '~/lib/utils'
 import {
   runAttribution,
   runCastDetection,
   runSegmentation,
+  runSynthesis,
 } from '~/server/pipeline-api'
-import {
-  countReviewSpans,
-  formatMetric,
-} from '~/lib/utils'
 import { PipelineRerunDialog } from './-components/pipeline-rerun-dialog'
 import { PipelineStage } from './-components/pipeline-stage'
 
@@ -28,10 +26,10 @@ function RouteComponent() {
   const { diagnostics } = useDocumentDiagnostics(bookSlug, documentId)
   const reviewCount = countReviewSpans(spans)
   const [runningStage, setRunningStage] = useState<
-    'segmentation' | 'cast detection' | 'attribution' | null
+    'segmentation' | 'cast detection' | 'attribution' | 'synthesis' | null
   >(null)
   const [confirmRerunStage, setConfirmRerunStage] = useState<
-    'segmentation' | 'cast detection' | null
+    'segmentation' | 'cast detection' | 'attribution' | 'synthesis' | null
   >(null)
   const [runningStartedAt, setRunningStartedAt] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -48,6 +46,9 @@ function RouteComponent() {
   const canRunCastDetection = hasCompletedSegmentation && !isPipelineBusy
   const canRunAttribution =
     hasCompletedSegmentation && hasCompletedCastDetection && !isPipelineBusy
+  const canRunSynthesis = hasCompletedAttribution && !isPipelineBusy
+  const hasCompletedSynthesis =
+    diagnostics?.latestSynthesisJob?.status === 'completed'
 
   async function refreshDocumentState() {
     await Promise.all([
@@ -139,6 +140,29 @@ function RouteComponent() {
     if (stage === 'cast detection') {
       await handleRunCastDetection({ force: true })
     }
+    if (stage === 'attribution') {
+      await handleRunAttribution({ force: true })
+    }
+    if (stage === 'synthesis') {
+      await handleRunSynthesis({ force: true })
+    }
+  }
+
+  async function handleRunSynthesis(options?: { force?: boolean }) {
+    setRunningStage('synthesis')
+    setRunningStartedAt(new Date().toISOString())
+    try {
+      const request = runSynthesis(documentId, options)
+      window.setTimeout(() => void refreshDocumentState(), 250)
+      await request
+      await refreshDocumentState()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Synthesis failed')
+    } finally {
+      setRunningStage(null)
+      setRunningStartedAt(null)
+    }
+    setError(null)
   }
 
   return (
@@ -271,15 +295,13 @@ function RouteComponent() {
                   runLabel="Run Attribution"
                   completedLabel="Attributed"
                   onRun={() => handleRunAttribution()}
-                  onRerun={() => handleRunAttribution({ force: true })}
+                  onRerun={() => setConfirmRerunStage('attribution')}
                 />
               }
             />
             <PipelineStage
               label="Synthesis"
-              status={
-                diagnostics?.latestSynthesisJob?.status ?? 'not implemented'
-              }
+              status={diagnostics?.latestSynthesisJob?.status ?? 'missing'}
               detail={null}
               diagnostics={diagnostics?.latestSynthesisJob}
               timerJob={getStageTimerJob({
@@ -287,6 +309,17 @@ function RouteComponent() {
                 isLocallyRunning: false,
                 runningStartedAt,
               })}
+              action={
+                <PipelineActionButton
+                  completed={hasCompletedSynthesis}
+                  disabled={!canRunSynthesis}
+                  isRunning={runningStage === 'synthesis'}
+                  runLabel="Synthesize"
+                  completedLabel="Synthesised"
+                  onRun={() => handleRunSynthesis()}
+                  onRerun={() => setConfirmRerunStage('synthesis')}
+                />
+              }
             />
           </ol>
           {error ? (
