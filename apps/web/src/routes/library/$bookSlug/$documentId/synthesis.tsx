@@ -21,6 +21,7 @@ function RouteComponent() {
   const spans = useDocumentSpans(bookSlug, documentId)
   const { diagnostics } = useDocumentDiagnostics(bookSlug, documentId)
   const latestSynthesisJob = diagnostics?.latestSynthesisJob
+  const previousSynthesisStatusRef = useRef<string | null>(null)
   const synthesisCounts = diagnostics?.synthesisCounts
   const currentSpanId =
     typeof synthesisCounts?.currentSpanId === 'string'
@@ -67,6 +68,20 @@ function RouteComponent() {
     }
     scrollElementIntoComfortView(currentSpanElement)
   }, [currentSpanId, latestSynthesisJob?.status])
+
+  useEffect(() => {
+    const nextStatus = latestSynthesisJob?.status ?? null
+    if (
+      previousSynthesisStatusRef.current === 'running' &&
+      nextStatus === 'completed'
+    ) {
+      window.scrollTo({
+        top: 0,
+        behavior: 'smooth',
+      })
+    }
+    previousSynthesisStatusRef.current = nextStatus
+  }, [latestSynthesisJob?.status])
 
   return (
     <div className="grid gap-10">

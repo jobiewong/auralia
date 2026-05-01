@@ -24,7 +24,7 @@ export function PipelineRerunDialog({
     segmentation: {
       title: 'Re-run segmentation',
       description:
-        'This will delete and regenerate spans, reset cast detection, attribution, and synthesis-derived outputs. Manual cast edits will be preserved, but cast detection must be run again.',
+        'This will delete and regenerate spans, reset cast detection, attribution, and synthesis-derived outputs. Any manual edits to text will be lost. Manual cast edits will be preserved, but cast detection must be run again.',
       confirmLabel: 'Re-run Segmentation',
     },
     'cast detection': {

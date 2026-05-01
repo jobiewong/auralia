@@ -1,8 +1,8 @@
-# Local Qwen3-TTS Setup
+# Qwen3-TTS setup
 
-Auralia runs Qwen3-TTS locally through an isolated Python environment. The web app never calls Qwen directly; it sends requests to FastAPI, and FastAPI launches the configured Qwen Python interpreter for preview generation.
+Auralia runs Qwen3-TTS locally through an isolated Python environment. The web app never calls Qwen directly; it sends requests to FastAPI, and FastAPI launches the configured Qwen Python interpreter for preview generation and synthesis.
 
-## 1. Create the Conda Environment
+## 1. Create the conda environment
 
 If `conda` is not installed, install Miniconda first. On Linux/WSL:
 
@@ -16,7 +16,7 @@ rm ~/miniconda3/miniconda.sh
 
 Restart the shell after `conda init`. Use `conda init bash` instead if your shell is Bash.
 
-Then run these commands from any directory. The Qwen environment does not need to live inside the Auralia repo.
+Run these commands from any directory — the Qwen environment does not need to live inside the Auralia repo:
 
 ```bash
 conda create -n qwen3-tts python=3.12 -y
@@ -52,11 +52,9 @@ AURALIA_QWEN_TTS_DEVICE=cpu
 AURALIA_QWEN_TTS_DTYPE=float32
 ```
 
-CPU generation is much slower.
+CPU generation works but is significantly slower.
 
-## 3. Verify the Environment
-
-Run:
+## 3. Verify the environment
 
 ```bash
 NUMBA_CACHE_DIR=/tmp/auralia-numba-cache \
@@ -66,18 +64,18 @@ PATH=/home/jobie/miniconda3/envs/qwen3-tts/bin:$PATH \
 
 Expected CUDA output:
 
-```text
+```
 True
 qwen ok
 ```
 
-If Qwen prints a FlashAttention warning, that is not fatal. Auralia retries model loading without FlashAttention.
-
-If the command fails with a Numba/librosa cache error, make sure `NUMBA_CACHE_DIR=/tmp/auralia-numba-cache` is set and the directory is writable.
+If it prints a FlashAttention warning, that is not fatal — Auralia retries model loading without FlashAttention automatically.
 
 If it prints `False`, PyTorch cannot see CUDA in the Qwen environment. Fix the CUDA/driver/WSL setup before using `AURALIA_QWEN_TTS_DEVICE=cuda:0`.
 
-## 4. First Preview Run
+If it fails with a Numba/librosa cache error, confirm `NUMBA_CACHE_DIR=/tmp/auralia-numba-cache` is set and the directory is writable.
+
+## 4. First preview run
 
 Start Auralia from the repo root:
 
@@ -85,9 +83,9 @@ Start Auralia from the repo root:
 npm run dev
 ```
 
-Create a designed voice in `/voices` and click Generate Preview. The FastAPI terminal should show messages like:
+Create a designed voice in `/voices` and click Generate Preview. The FastAPI terminal should show:
 
-```text
+```
 [qwen-tts] importing runtime packages
 [qwen-tts] torch cuda_available=True device=cuda:0
 [qwen-tts] loading model Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign
@@ -95,13 +93,11 @@ Create a designed voice in `/voices` and click Generate Preview. The FastAPI ter
 [qwen-tts] wrote data/voices/<voice_id>/previews/<file>.wav
 ```
 
-The first run may download model weights from Hugging Face and take longer. Later runs should reuse the local model cache.
+The first run may download model weights from Hugging Face. Later runs reuse the local cache. Set `AURALIA_QWEN_TTS_VOICE_DESIGN_MODEL` to a local directory path to run fully offline after the initial download.
 
-## 5. FlashAttention
+## 5. FlashAttention (optional)
 
-FlashAttention is optional. Without it, Qwen3-TTS still works, but generation can be slower and use more VRAM.
-
-Try installing it only after baseline preview generation works:
+FlashAttention can improve generation speed and VRAM usage on compatible hardware. Try it only after baseline preview generation works:
 
 ```bash
 conda activate qwen3-tts
@@ -109,7 +105,7 @@ pip install packaging ninja
 MAX_JOBS=1 NVCC_THREADS=1 pip install flash-attn --no-build-isolation --no-cache-dir
 ```
 
-Builds can fail on newer stacks such as Python 3.12, very new PyTorch builds, or CUDA 13.x if no matching wheel exists. They can also be killed by the OS if compilation runs out of memory. In that case, leave FlashAttention uninstalled and continue with the default PyTorch attention path.
+Builds can fail on newer Python/PyTorch/CUDA combinations if no matching wheel exists, or if compilation runs out of memory. Leave FlashAttention uninstalled if it fails — Auralia retries model loading without it.
 
 ## References
 
