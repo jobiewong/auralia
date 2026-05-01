@@ -17,7 +17,7 @@ import {
   formatSpanCount,
   parseRoster,
 } from '~/lib/utils'
-import { updateSpanAttribution } from '~/server/documents'
+import { updateSpanAttribution, updateSpanText } from '~/server/documents'
 import { runCastDetection, runSegmentation } from '~/server/pipeline-api'
 import { PipelineRerunDialog } from './-components/pipeline-rerun-dialog'
 import { Span } from './-components/span'
@@ -32,6 +32,7 @@ function RouteComponent() {
   const { bookSlug, documentId } = Route.useParams()
   const queryClient = useQueryClient()
   const updateAttribution = useServerFn(updateSpanAttribution)
+  const updateText = useServerFn(updateSpanText)
   const spans = useDocumentSpans(bookSlug, documentId)
   const { diagnostics } = useDocumentDiagnostics(bookSlug, documentId)
   const [activeSpanId, setActiveSpanId] = useState<string | null>(null)
@@ -144,6 +145,17 @@ function RouteComponent() {
       queryClient.invalidateQueries({ queryKey: ['book-documents', bookSlug] }),
       queryClient.invalidateQueries({ queryKey: ['books'] }),
     ])
+  }
+
+  async function handleSaveSpanText({
+    spanId,
+    text,
+  }: {
+    spanId: string
+    text: string
+  }) {
+    await updateText({ data: { spanId, text } })
+    await refreshDocumentState()
   }
 
   function moveToReview(direction: 1 | -1) {
@@ -304,6 +316,7 @@ function RouteComponent() {
                 isActive={activeSpanId === span.id}
                 onActivate={() => handleActivateSpan(span)}
                 onSave={handleSaveAttribution}
+                onSaveText={handleSaveSpanText}
               />
             ))}
           </ol>
