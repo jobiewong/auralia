@@ -19,6 +19,13 @@ export const UpdateSpanAttributionInput = z.object({
   needsReview: z.boolean().default(false),
 })
 
+export const UpdateSpanTextInput = z.object({
+  spanId: z.string().min(1),
+  text: z.string().refine((text) => text.trim().length > 0, {
+    message: 'Span text cannot be blank',
+  }),
+})
+
 export const CastCharacterInput = z.object({
   documentId: z.string().min(1),
   canonicalName: z.string().trim().min(1),
@@ -564,6 +571,92 @@ export async function updateSpanAttributionQuery(data: z.infer<typeof UpdateSpan
       speaker,
       speakerConfidence,
       needsReview: data.needsReview,
+    }
+  })
+}
+
+export async function updateSpanTextQuery(data: z.infer<typeof UpdateSpanTextInput>) {
+  const [
+    { db },
+    { documents, spans, synthesisJobs, synthesisSegments, works },
+    { desc, eq, inArray },
+  ] = await Promise.all([
+    import('./index.ts'),
+    import('./schema.ts'),
+    import('drizzle-orm'),
+  ])
+  const now = new Date().toISOString()
+
+  if (data.text.trim().length === 0) {
+    throw new Error('Span text cannot be blank')
+  }
+
+  return db.transaction((tx) => {
+    const span = tx
+      .select({
+        id: spans.id,
+        documentId: spans.documentId,
+        start: spans.start,
+        end: spans.end,
+        workId: documents.workId,
+      })
+      .from(spans)
+      .innerJoin(documents, eq(spans.documentId, documents.id))
+      .where(eq(spans.id, data.spanId))
+      .get()
+
+    if (!span) {
+      throw new Error('Span not found')
+    }
+
+    const latestSynthesisJob = tx
+      .select({ status: synthesisJobs.status })
+      .from(synthesisJobs)
+      .where(eq(synthesisJobs.documentId, span.documentId))
+      .orderBy(desc(synthesisJobs.updatedAt))
+      .get()
+
+    if (latestSynthesisJob?.status === 'running') {
+      throw new Error('Cannot edit span text while synthesis is running')
+    }
+
+    const synthesisJobRows = tx
+      .select({ id: synthesisJobs.id })
+      .from(synthesisJobs)
+      .where(eq(synthesisJobs.documentId, span.documentId))
+      .all()
+    const synthesisJobIds = synthesisJobRows.map((job) => job.id)
+
+    if (synthesisJobIds.length > 0) {
+      tx.delete(synthesisSegments)
+        .where(inArray(synthesisSegments.jobId, synthesisJobIds))
+        .run()
+    }
+
+    tx.update(spans)
+      .set({ text: data.text, updatedAt: now })
+      .where(eq(spans.id, data.spanId))
+      .run()
+    tx.update(documents)
+      .set({ updatedAt: now })
+      .where(eq(documents.id, span.documentId))
+      .run()
+    tx.delete(synthesisJobs)
+      .where(eq(synthesisJobs.documentId, span.documentId))
+      .run()
+
+    if (span.workId) {
+      tx.update(works)
+        .set({ updatedAt: now })
+        .where(eq(works.id, span.workId))
+        .run()
+    }
+
+    return {
+      spanId: data.spanId,
+      text: data.text,
+      start: span.start,
+      end: span.end,
     }
   })
 }

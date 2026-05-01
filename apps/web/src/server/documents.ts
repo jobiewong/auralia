@@ -10,6 +10,7 @@ import {
   UpdateCastCharacterInput,
   UpdateDocumentTitleInput,
   UpdateSpanAttributionInput,
+  UpdateSpanTextInput,
   addCastCharacterQuery,
   deleteCastCharacterQuery,
   deleteDocumentQuery,
@@ -20,6 +21,7 @@ import {
   updateCastCharacterQuery,
   updateDocumentTitleQuery,
   updateSpanAttributionQuery,
+  updateSpanTextQuery,
 } from '~/db/documents'
 
 export const listWorkDocuments = createServerFn({ method: 'GET' })
@@ -41,6 +43,10 @@ export const getDocumentDiagnostics = createServerFn({ method: 'GET' })
 export const updateSpanAttribution = createServerFn({ method: 'POST' })
   .inputValidator(UpdateSpanAttributionInput)
   .handler(({ data }) => updateSpanAttributionQuery(data))
+
+export const updateSpanText = createServerFn({ method: 'POST' })
+  .inputValidator(UpdateSpanTextInput)
+  .handler(({ data }) => updateSpanTextQuery(data))
 
 export const addCastCharacter = createServerFn({ method: 'POST' })
   .inputValidator(CastCharacterInput)
