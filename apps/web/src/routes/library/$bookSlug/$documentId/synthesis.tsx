@@ -238,7 +238,7 @@ function SpanItem({
           <p>{formatDuration(span.synthesisDurationMs)}</p>
         </button>
       </div>
-      <p>{span.text}</p>
+      <p className='whitespace-pre-line leading-tight'>{span.text}</p>
     </div>
   )
 }
