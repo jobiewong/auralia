@@ -91,6 +91,12 @@ class Settings(BaseSettings):
         le=10_000,
         description="Silence inserted between sub-clips inside a long span.",
     )
+    synthesis_newline_pause_ms: int = Field(
+        default=900,
+        ge=0,
+        le=10_000,
+        description="Silence inserted at newline boundaries inside a span.",
+    )
     qwen_tts_python: str | None = Field(
         default=None,
         description="Python executable for the isolated local Qwen3-TTS environment.",

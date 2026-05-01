@@ -12,6 +12,7 @@ from auralia_api.segmentation.service import segment_document
 from auralia_api.synthesis.service import (
     AlreadySynthesizedError,
     SynthesisValidationError,
+    _cache_key,
     create_synthesis_job,
     get_segment_audio_file,
     run_synthesis_job,
@@ -148,6 +149,7 @@ def test_synthesis_job_generates_output_and_manifest(monkeypatch, tmp_path):
     db_path, voice_root, output_root = _configure(monkeypatch, tmp_path)
     monkeypatch.setenv("AURALIA_SYNTHESIS_SPAN_PAUSE_MS", "375")
     monkeypatch.setenv("AURALIA_SYNTHESIS_CHUNK_PAUSE_MS", "125")
+    monkeypatch.setenv("AURALIA_SYNTHESIS_NEWLINE_PAUSE_MS", "950")
     get_settings.cache_clear()
     document_id = _ingest_segment_and_attribute(
         db_path,
@@ -185,6 +187,7 @@ def test_synthesis_job_generates_output_and_manifest(monkeypatch, tmp_path):
     manifest = json.loads(manifest_path.read_text())
     assert manifest["span_pause_ms"] == 375
     assert manifest["chunk_pause_ms"] == 125
+    assert manifest["newline_pause_ms"] == 950
     with sqlite3.connect(db_path) as conn:
         span_count = conn.execute(
             "SELECT COUNT(*) FROM spans WHERE document_id = ?",
@@ -346,3 +349,35 @@ def test_synthesis_blocks_plain_clone_voice(monkeypatch, tmp_path):
     else:
         raise AssertionError("expected SynthesisValidationError")
     assert "unsupported_voice_mode" in codes
+
+
+def test_synthesis_cache_key_includes_newline_pause():
+    span = {
+        "id": "span_1",
+        "type": "narration",
+        "text": "Chapter 1\nSaturday 7th August",
+    }
+    voice = {
+        "id": "voice_narrator",
+        "mode": "designed",
+        "control_text": "warm, clear, steady",
+        "prompt_audio_path": None,
+        "prompt_text": None,
+        "temperature": 0.9,
+        "updated_at": "2026-01-01T00:00:00",
+    }
+
+    first = _cache_key(
+        span=span,
+        voice=voice,
+        chunk_pause_ms=125,
+        newline_pause_ms=900,
+    )
+    second = _cache_key(
+        span=span,
+        voice=voice,
+        chunk_pause_ms=125,
+        newline_pause_ms=950,
+    )
+
+    assert first != second

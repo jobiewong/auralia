@@ -11,9 +11,11 @@ from uuid import uuid4
 from auralia_api.config import get_settings
 from auralia_api.synthesis.audio import (
     AudioAssemblyError,
-    chunk_text_by_sentences,
+    TextChunk,
     concatenate_wavs,
+    concatenate_wavs_with_pauses,
     duration_ms,
+    plan_text_chunks,
 )
 from auralia_api.synthesis.storage import (
     AlreadySynthesizedError,
@@ -35,7 +37,7 @@ from auralia_api.voices.qwen_tts import (
 from auralia_api.voices.service import validate_voice_profile
 
 NARRATOR_SPEAKER = "NARRATOR"
-SYNTHESIS_VERSION = "m7_synthesis_v1"
+SYNTHESIS_VERSION = "m7_synthesis_v2"
 
 
 class SynthesisValidationError(ValueError):
@@ -160,6 +162,7 @@ def _generate_document_audio(
     settings = get_settings()
     span_pause_ms = settings.synthesis_span_pause_ms
     chunk_pause_ms = settings.synthesis_chunk_pause_ms
+    newline_pause_ms = settings.synthesis_newline_pause_ms
     document = plan["document"]
     output_dir = Path(output_root) / document["id"] / job_id
     segments_dir = output_dir / "segments"
@@ -193,11 +196,19 @@ def _generate_document_audio(
         voice = plan["mappings"][speaker]
         text_hash = _sha256(span["text"])
         cache_key = _cache_key(
-            span=span, voice=voice, chunk_pause_ms=chunk_pause_ms
+            span=span,
+            voice=voice,
+            chunk_pause_ms=chunk_pause_ms,
+            newline_pause_ms=newline_pause_ms,
         )
         cached_path = cache_dir / f"{cache_key}.wav"
         segment_path = segments_dir / f"{index:05d}_{span['id']}.wav"
-        chunks = chunk_text_by_sentences(span["text"], max_sentences=3)
+        chunks = plan_text_chunks(
+            span["text"],
+            max_sentences=3,
+            chunk_pause_ms=chunk_pause_ms,
+            newline_pause_ms=newline_pause_ms,
+        )
         chunk_total += len(chunks)
         if cached_path.exists() and cached_path.stat().st_size > 0:
             shutil.copyfile(cached_path, segment_path)
@@ -209,10 +220,12 @@ def _generate_document_audio(
                 voice=voice,
                 chunks_dir=chunks_dir,
             )
-            concatenate_wavs(
+            concatenate_wavs_with_pauses(
                 chunk_paths,
                 segment_path,
-                pause_ms=chunk_pause_ms,
+                pause_ms_between=[
+                    chunk.pause_after_ms or 0 for chunk in chunks[:-1]
+                ],
             )
             shutil.copyfile(segment_path, cached_path)
 
@@ -277,6 +290,7 @@ def _generate_document_audio(
         ),
         "span_pause_ms": span_pause_ms,
         "chunk_pause_ms": chunk_pause_ms,
+        "newline_pause_ms": newline_pause_ms,
         "segments": generated_segments,
     }
     manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
@@ -305,7 +319,7 @@ def _generate_document_audio(
 def _generate_span_chunks(
     *,
     span: dict[str, Any],
-    chunks: list[str],
+    chunks: list[TextChunk],
     voice: dict[str, Any],
     chunks_dir: Path,
 ) -> list[Path]:
@@ -314,7 +328,7 @@ def _generate_span_chunks(
     chunk_paths: list[Path] = []
     for index, chunk in enumerate(chunks):
         chunk_path = span_dir / f"{index:03d}.wav"
-        generate_qwen_audio(voice=voice, text=chunk, output_path=chunk_path)
+        generate_qwen_audio(voice=voice, text=chunk.text, output_path=chunk_path)
         chunk_paths.append(chunk_path)
     return chunk_paths
 
@@ -384,7 +398,11 @@ def _speaker_for_span(span: dict[str, Any]) -> str:
 
 
 def _cache_key(
-    *, span: dict[str, Any], voice: dict[str, Any], chunk_pause_ms: int
+    *,
+    span: dict[str, Any],
+    voice: dict[str, Any],
+    chunk_pause_ms: int,
+    newline_pause_ms: int,
 ) -> str:
     payload = {
         "version": SYNTHESIS_VERSION,
@@ -398,7 +416,12 @@ def _cache_key(
             "temperature": voice.get("temperature"),
             "updated_at": voice.get("updated_at"),
         },
-        "chunking": {"max_sentences": 3, "chunk_pause_ms": chunk_pause_ms},
+        "chunking": {
+            "mode": "sentence_chunks_with_newline_pauses",
+            "max_sentences": 3,
+            "chunk_pause_ms": chunk_pause_ms,
+            "newline_pause_ms": newline_pause_ms,
+        },
     }
     return _sha256(json.dumps(payload, sort_keys=True))
 

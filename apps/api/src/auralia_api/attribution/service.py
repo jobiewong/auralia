@@ -11,7 +11,6 @@ from auralia_api.validators.reports import build_validation_report
 from .parser import AttributionParseError, parse_window_attributions
 from .pre_pass import resolve_dialogue_spans_deterministically
 from .prompts import WINDOW_SYSTEM_PROMPT, build_window_user_prompt
-from .roster import extract_character_roster
 from .storage import (
     AlreadyAttributedError,
     DocumentNotFoundError,
@@ -20,7 +19,6 @@ from .storage import (
     insert_attribution_job,
     insert_attributions,
     load_document_with_spans,
-    save_document_roster,
     update_attribution_job,
 )
 from .validators import run_all_attribution_validators
@@ -88,11 +86,6 @@ def attribute_document(
         roster, roster_usage = _load_or_extract_roster(
             document=document,
             sqlite_path=sqlite_path,
-            model_name=model_name,
-            base_url=base_url,
-            timeout_seconds=timeout_seconds,
-            max_retries=max_retries,
-            has_dialogue=bool(dialogue_ids),
         )
         stage_timings_ms["load_cast"] = int(
             (time.perf_counter_ns() - cast_start) / 1_000_000
@@ -353,32 +346,11 @@ def _load_or_extract_roster(
     *,
     document: dict[str, Any],
     sqlite_path: str,
-    model_name: str,
-    base_url: str,
-    timeout_seconds: float,
-    max_retries: int,
-    has_dialogue: bool,
 ) -> tuple[list[dict[str, Any]], dict[str, int | None]]:
-    try:
-        return require_cast_roster(
-            sqlite_path=sqlite_path,
-            document_id=document["id"],
-        ), {"prompt_eval_count": 0, "eval_count": 0}
-    except CastRequiredError:
-        roster, usage = extract_character_roster(
-            document_text=document["text"],
-            has_dialogue=has_dialogue,
-            model=model_name,
-            base_url=base_url,
-            timeout_seconds=timeout_seconds,
-            max_retries=max_retries,
-        )
-        save_document_roster(
-            sqlite_path=sqlite_path,
-            document_id=document["id"],
-            roster=roster,
-        )
-        return roster, usage
+    return require_cast_roster(
+        sqlite_path=sqlite_path,
+        document_id=document["id"],
+    ), {"prompt_eval_count": 0, "eval_count": 0}
 
 
 def _merge_attributions(

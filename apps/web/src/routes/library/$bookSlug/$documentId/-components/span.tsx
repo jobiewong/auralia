@@ -51,7 +51,7 @@ export function Span({
             {span.needsReview ? ' / needs review' : ''}
           </p>
         )}
-        <p className="leading-tight">{span.text}</p>
+        <p className="whitespace-pre-line leading-tight">{span.text}</p>
         <p className="text-foreground/50">
           source offsets {span.start}-{span.end} /{' '}
           {formatTextLength(span.text.length)}

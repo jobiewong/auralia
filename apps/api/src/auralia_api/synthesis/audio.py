@@ -4,11 +4,18 @@ import re
 import shutil
 import subprocess
 import wave
+from dataclasses import dataclass
 from pathlib import Path
 
 
 class AudioAssemblyError(RuntimeError):
     pass
+
+
+@dataclass(frozen=True)
+class TextChunk:
+    text: str
+    pause_after_ms: int | None = None
 
 
 def chunk_text_by_sentences(text: str, *, max_sentences: int = 3) -> list[str]:
@@ -23,14 +30,58 @@ def chunk_text_by_sentences(text: str, *, max_sentences: int = 3) -> list[str]:
     return chunks
 
 
+def plan_text_chunks(
+    text: str,
+    *,
+    max_sentences: int = 3,
+    chunk_pause_ms: int,
+    newline_pause_ms: int,
+) -> list[TextChunk]:
+    line_blocks = [block for block in re.split(r"\n+", text) if block.strip()]
+    if not line_blocks:
+        return [TextChunk(text)]
+
+    chunks: list[TextChunk] = []
+    for block_index, block in enumerate(line_blocks):
+        block_chunks = chunk_text_by_sentences(block, max_sentences=max_sentences)
+        for chunk_index, chunk in enumerate(block_chunks):
+            is_last_in_block = chunk_index == len(block_chunks) - 1
+            is_last_block = block_index == len(line_blocks) - 1
+            pause_after_ms = (
+                newline_pause_ms
+                if is_last_in_block and not is_last_block
+                else chunk_pause_ms
+                if not is_last_in_block
+                else None
+            )
+            chunks.append(TextChunk(chunk, pause_after_ms))
+    return chunks
+
+
 def concatenate_wavs(
     input_paths: list[Path],
     output_path: Path,
     *,
     pause_ms: int = 0,
 ) -> None:
+    pause_ms_between = [pause_ms] * max(len(input_paths) - 1, 0)
+    concatenate_wavs_with_pauses(
+        input_paths,
+        output_path,
+        pause_ms_between=pause_ms_between,
+    )
+
+
+def concatenate_wavs_with_pauses(
+    input_paths: list[Path],
+    output_path: Path,
+    *,
+    pause_ms_between: list[int],
+) -> None:
     if not input_paths:
         raise AudioAssemblyError("no audio clips to concatenate")
+    if len(pause_ms_between) != max(len(input_paths) - 1, 0):
+        raise AudioAssemblyError("pause count must match audio clip boundaries")
     if shutil.which("ffmpeg") is None:
         raise AudioAssemblyError("ffmpeg is required for audio assembly")
 
@@ -39,14 +90,20 @@ def concatenate_wavs(
     work_dir.mkdir(parents=True, exist_ok=True)
     try:
         concat_inputs: list[Path] = []
-        silence_path: Path | None = None
-        if pause_ms > 0 and len(input_paths) > 1:
-            silence_path = work_dir / f"silence_{pause_ms}ms.wav"
-            _write_silence_like(input_paths[0], silence_path, pause_ms=pause_ms)
+        silence_paths: dict[int, Path] = {}
         for index, path in enumerate(input_paths):
             concat_inputs.append(path)
-            if silence_path is not None and index < len(input_paths) - 1:
-                concat_inputs.append(silence_path)
+            if index >= len(pause_ms_between):
+                continue
+            pause_ms = pause_ms_between[index]
+            if pause_ms <= 0:
+                continue
+            silence_path = silence_paths.get(pause_ms)
+            if silence_path is None:
+                silence_path = work_dir / f"silence_{pause_ms}ms.wav"
+                _write_silence_like(input_paths[0], silence_path, pause_ms=pause_ms)
+                silence_paths[pause_ms] = silence_path
+            concat_inputs.append(silence_path)
 
         list_path = work_dir / "inputs.txt"
         list_path.write_text(

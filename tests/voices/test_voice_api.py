@@ -373,7 +373,7 @@ def test_hifi_clone_preview_uses_preset_sentence_and_persists_wav(
 
 
 def test_preview_without_qwen_runtime_returns_502(monkeypatch, tmp_path):
-    monkeypatch.delenv("AURALIA_QWEN_TTS_PYTHON", raising=False)
+    monkeypatch.setenv("AURALIA_QWEN_TTS_PYTHON", "")
     client = _client(monkeypatch, tmp_path)
     created = client.post(
         "/api/voices",
