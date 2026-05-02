@@ -74,6 +74,7 @@ def segment_document(
         source_text=source_text,
         intervals=intervals,
     )
+    spans = _merge_whitespace_only_narration_spans(spans)
 
     job_id = f"seg_{uuid4().hex[:12]}"
     insert_segmentation_job(
@@ -86,7 +87,7 @@ def segment_document(
         stats=None,
         error_report=None,
     )
-    stats = _build_stats(intervals)
+    stats = _build_stats(spans)
 
     validation_payload = {
         "source_id": document["source_id"],
@@ -159,13 +160,48 @@ def _intervals_to_api_spans(
     ]
 
 
-def _build_stats(intervals: list[SpanInterval]) -> dict[str, Any]:
-    narration = sum(1 for iv in intervals if iv.type == "narration")
-    dialogue = sum(1 for iv in intervals if iv.type == "dialogue")
+def _merge_whitespace_only_narration_spans(
+    spans: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    merged: list[dict[str, Any]] = []
+    pending_prefix = ""
+    pending_start: int | None = None
+
+    for span in spans:
+        text = span["text"]
+        if span["type"] == "narration" and text.strip() == "":
+            if merged:
+                previous = merged[-1]
+                previous["text"] += text
+                previous["end"] = span["end"]
+            else:
+                pending_prefix += text
+                pending_start = span["start"] if pending_start is None else pending_start
+            continue
+
+        next_span = dict(span)
+        if pending_prefix:
+            next_span["text"] = pending_prefix + next_span["text"]
+            next_span["start"] = pending_start
+            pending_prefix = ""
+            pending_start = None
+        merged.append(next_span)
+
+    if pending_prefix and merged:
+        previous = merged[-1]
+        previous["text"] += pending_prefix
+        previous["end"] = spans[-1]["end"]
+
+    return merged
+
+
+def _build_stats(spans: list[dict[str, Any]]) -> dict[str, Any]:
+    narration = sum(1 for span in spans if span["type"] == "narration")
+    dialogue = sum(1 for span in spans if span["type"] == "dialogue")
     return {
         "method": SEGMENTATION_METHOD,
         "span_counts": {
-            "total": len(intervals),
+            "total": len(spans),
             "narration": narration,
             "dialogue": dialogue,
         },

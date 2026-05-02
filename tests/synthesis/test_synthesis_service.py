@@ -220,6 +220,47 @@ def test_synthesis_job_generates_output_and_manifest(monkeypatch, tmp_path):
     assert segment_audio.exists()
 
 
+def test_synthesis_skips_whitespace_only_spans(monkeypatch, tmp_path):
+    db_path, voice_root, output_root = _configure(monkeypatch, tmp_path)
+    document_id = _ingest_segment_and_attribute(db_path, "Alpha.")
+    _map_required_voices(db_path, document_id)
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO spans (id, document_id, type, text, start, end)
+            VALUES (?, ?, 'narration', ?, ?, ?)
+            """,
+            ("span_whitespace", document_id, "\n", 6, 7),
+        )
+
+    created = create_synthesis_job(
+        document_id=document_id,
+        sqlite_path=str(db_path),
+        output_root=str(output_root),
+        voice_root=str(voice_root),
+    )
+    job_id = created["synthesis_job"]["id"]
+    run_synthesis_job(
+        job_id=job_id,
+        sqlite_path=str(db_path),
+        output_root=str(output_root),
+        voice_root=str(voice_root),
+    )
+
+    job = get_synthesis_job(sqlite_path=str(db_path), job_id=job_id)
+    assert job["status"] == "completed"
+    assert job["stats"]["span_count"] == 1
+    with sqlite3.connect(db_path) as conn:
+        synthesized_span_ids = {
+            row[0]
+            for row in conn.execute(
+                "SELECT span_id FROM synthesis_segments WHERE job_id = ?",
+                (job_id,),
+            )
+        }
+    assert "span_whitespace" not in synthesized_span_ids
+
+
 def test_synthesis_blocks_needs_review(monkeypatch, tmp_path):
     db_path, voice_root, output_root = _configure(monkeypatch, tmp_path)
     result = ingest_text(

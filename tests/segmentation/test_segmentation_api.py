@@ -90,6 +90,29 @@ def test_segment_endpoint_persists_spans_and_job(monkeypatch, tmp_path):
     assert stats["span_counts"] == {"total": 3, "narration": 1, "dialogue": 2}
 
 
+def test_segment_endpoint_merges_whitespace_only_narration(monkeypatch, tmp_path):
+    db_path = tmp_path / "auralia.sqlite"
+    client = _client_with_db(monkeypatch, db_path)
+    text = '"First."\n"Second."'
+    doc_id = _ingest(client, text)
+
+    response = client.post("/api/segment", json={"document_id": doc_id})
+    assert response.status_code == 201, response.text
+    body = response.json()
+
+    spans = body["spans"]
+    assert [span["type"] for span in spans] == ["dialogue", "dialogue"]
+    assert spans[0]["text"] == '"First."\n'
+    assert spans[1]["text"] == '"Second."'
+    assert "".join(span["text"] for span in spans) == text
+    assert spans[0]["end"] == spans[1]["start"]
+    assert body["segmentation_job"]["stats"]["span_counts"] == {
+        "total": 2,
+        "narration": 0,
+        "dialogue": 2,
+    }
+
+
 def test_segment_endpoint_returns_404_for_missing_document(monkeypatch, tmp_path):
     db_path = tmp_path / "auralia.sqlite"
     client = _client_with_db(monkeypatch, db_path)

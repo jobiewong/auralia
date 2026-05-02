@@ -177,8 +177,9 @@ def _generate_document_audio(
     cache_hits = 0
     chunk_total = 0
     completed_spans = 0
-    total_spans = len(plan["spans"])
-    for index, span in enumerate(plan["spans"]):
+    spans = [span for span in plan["spans"] if span["text"].strip()]
+    total_spans = len(spans)
+    for index, span in enumerate(spans):
         update_synthesis_job(
             sqlite_path=sqlite_path,
             job_id=job_id,
@@ -301,7 +302,7 @@ def _generate_document_audio(
             output_root=output_root, path=manifest_path
         ),
         "stats": {
-            "span_count": len(plan["spans"]),
+            "span_count": total_spans,
             "chunk_count": chunk_total,
             "cache_hits": cache_hits,
             "output_bytes": output_path.stat().st_size,

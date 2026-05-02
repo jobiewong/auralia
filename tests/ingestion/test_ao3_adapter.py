@@ -75,7 +75,10 @@ AO3_SAMPLE_HTML = (
 
 
 def test_fetch_ao3_chapter_extracts_title_and_cleaned_body(monkeypatch):
-    def fake_urlopen(_request, timeout=15):
+    captured = {}
+
+    def fake_urlopen(request, timeout=15):
+        captured["request"] = request
         return _FakeResponse(AO3_SAMPLE_HTML)
 
     monkeypatch.setattr(
@@ -87,6 +90,7 @@ def test_fetch_ao3_chapter_extracts_title_and_cleaned_body(monkeypatch):
         "https://archiveofourown.org/works/52818466/chapters/133596877",
     )
 
+    assert captured["request"].get_header("Cookie") == "view_adult=true"
     assert chapter.work_id == "52818466"
     assert chapter.chapter_id == "133596877"
     assert chapter.title == "Chapter 1: Year 1"
